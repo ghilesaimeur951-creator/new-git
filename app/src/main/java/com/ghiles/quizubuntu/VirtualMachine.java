@@ -1218,34 +1218,6 @@ public final class VirtualMachine {
             return Result.success("Switched to a new branch '" + name + "'");
         }
 
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
-        if (n.startsWith("git checkout -b ")) {
-            return Result.normal("");
-        }
-
         if (n.startsWith("git checkout -B ")) {
             String name = command.substring("git checkout -B ".length()).trim();
             branches.put(name, branches.getOrDefault(headBranch, ""));
@@ -1585,9 +1557,12 @@ public final class VirtualMachine {
         }
 
         if ("git fetch".equals(n) ||
-            "git fetch origin".equals(n) ||
+            n.startsWith("git fetch origin") ||
             "git fetch --all".equals(n) ||
-            "git fetch --prune".equals(n)) {
+            "git fetch --prune".equals(n) ||
+            "git fetch --tags".equals(n) ||
+            "git fetch --dry-run".equals(n) ||
+            "git fetch --verbose".equals(n)) {
 
             if (remoteOrigin.isEmpty()) {
                 return Result.error(
@@ -1608,9 +1583,12 @@ public final class VirtualMachine {
             );
         }
 
-        if ("git pull origin main".equals(n) ||
-            "git pull --rebase origin main".equals(n) ||
-            "git pull origin main --allow-unrelated-histories".equals(n)) {
+        if ("git pull".equals(n) ||
+            n.startsWith("git pull origin main") ||
+            n.startsWith("git pull --rebase origin main") ||
+            n.startsWith("git pull --ff-only origin main") ||
+            n.startsWith("git pull --no-rebase origin main") ||
+            n.startsWith("git pull --autostash origin main")) {
             return gitPull(command);
         }
 
@@ -1676,9 +1654,37 @@ public final class VirtualMachine {
             );
         }
 
+        String catalogue = CommandCatalog.describe(command);
+
+        if (!catalogue.isEmpty()) {
+            return Result.normal("[simulation documentaire Git] " + catalogue);
+        }
+
         return Result.error(
-            "git: commande ou variante non prise en charge : " + command
+            "git: commande ou variante non prise en charge : " + command +
+            "\nEssaie « help git », « help checkout » ou « man checkout »."
         );
+    }
+
+    private Result restoreFromHead(String relative) {
+        String path = relative == null ? "" : relative.trim();
+
+        if (path.isEmpty()) {
+            return Result.error("fatal: pathspec vide");
+        }
+
+        String content = headSnapshot.get(path);
+
+        if (content == null) {
+            return Result.error(
+                "error: pathspec '" + path + "' did not match any file known to git"
+            );
+        }
+
+        files.put(repoRoot + "/" + path, content);
+        staged.remove(path);
+
+        return Result.normal("");
     }
 
     private Result executeSsh(String command) {
@@ -2471,6 +2477,9 @@ public final class VirtualMachine {
             "  cat ~/.ssh/id_ed25519.pub, cat -A ~/.ssh/id_ed25519.pub\n" +
             "  ssh-keygen -lf ~/.ssh/id_ed25519.pub, xclip, wl-copy\n" +
             "  ssh -T git@github.com\n\n" +
+            "Commandes voisines ajoutées : git checkout, restore, reset, stash, tag, reflog, merge, cherry-pick, revert, clean, git rm, git mv, grep, find, head, tail, wc, stat, file, tar, curl, apt, systemctl, etc.\n\n" +
+            "Catalogue extensif : " + CommandCatalog.count() + " signatures/exemples.\n" +
+            "Utilise « help git », « help checkout », « apropos branch », « man checkout » ou « compgen -c ».\n\n" +
             "Le terminal est simulé : aucune commande arbitraire n'est exécutée sur Android.";
     }
 
