@@ -2,6 +2,7 @@ package com.ghiles.quizubuntu;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -23,6 +24,9 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
 
@@ -234,6 +238,8 @@ public class MainActivity extends Activity {
     private int streak = 0;
     private boolean answered = false;
     private boolean reviewMode = false;
+    private boolean customMode = false;
+    private String customModeTitle = "";
 
     private TextView categoryView;
     private TextView progressView;
@@ -315,6 +321,48 @@ public class MainActivity extends Activity {
         review.setOnClickListener(v -> startReviewErrors());
         root.addView(review);
 
+        addSection(root, "Modes avancés");
+
+        LinearLayout labCard = column(16, 16, 16, 16);
+        labCard.setBackground(roundedDrawable(surfaceColor(), 22, borderColor()));
+        TextView labTitle = text(">_  Laboratoire Ubuntu", 19, true);
+        labTitle.setTextColor(accentColor());
+        labCard.addView(labTitle);
+        addBody(labCard, "Un PC Ubuntu simulé avec objectifs, terminal interactif, 4 propositions ou saisie libre.", 14);
+        Button simulator = actionButton("Ouvrir le PC Ubuntu simulé");
+        simulator.setOnClickListener(v -> startActivity(new Intent(this, SimulatorActivity.class)));
+        labCard.addView(simulator);
+        root.addView(labCard, spaced(10));
+
+        Button quick = secondaryFullButton("Quiz rapide — 10 questions");
+        quick.setOnClickListener(v -> startQuickQuiz());
+        root.addView(quick);
+
+        Button adaptive = secondaryFullButton("Entraînement adaptatif");
+        adaptive.setOnClickListener(v -> startAdaptiveQuiz());
+        root.addView(adaptive);
+
+        Button targeted = secondaryFullButton("Révision ciblée par thème");
+        targeted.setOnClickListener(v -> showCategoryPicker());
+        root.addView(targeted);
+
+        Button lessons = secondaryFullButton("Fiches de cours");
+        lessons.setOnClickListener(v -> showCourseMenu());
+        root.addView(lessons);
+
+        Button export = secondaryFullButton("Exporter ma progression");
+        export.setOnClickListener(v -> shareProgress());
+        root.addView(export);
+
+        addSection(root, "Objectif du jour");
+        int dailyDone = dailyAnswered();
+        int dailyGoal = 10;
+        TextView daily = card(
+            "Aujourd'hui : " + Math.min(dailyDone, dailyGoal) + " / " + dailyGoal + " questions\n" +
+            (dailyDone >= dailyGoal ? "✓ Objectif quotidien atteint" : "Encore " + (dailyGoal - dailyDone) + " question(s) pour terminer")
+        );
+        root.addView(daily);
+
         addSection(root, "Parcours");
 
         for (LevelInfo info : levels) {
@@ -371,6 +419,8 @@ public class MainActivity extends Activity {
 
     private void startLevel(int level) {
         reviewMode = false;
+        customMode = false;
+        customModeTitle = "";
         activeLevel = level;
         quiz = new ArrayList<>();
         for (Question q : questions) {
@@ -397,6 +447,8 @@ public class MainActivity extends Activity {
         }
         Collections.shuffle(quiz);
         reviewMode = true;
+        customMode = false;
+        customModeTitle = "RÉVISION DES ERREURS";
         activeLevel = 0;
         currentIndex = 0;
         correctCount = 0;
@@ -417,12 +469,15 @@ public class MainActivity extends Activity {
         back.setOnClickListener(v -> showHome());
         root.addView(back);
 
-        TextView mode = text(reviewMode ? "RÉVISION DES ERREURS" : "NIVEAU " + activeLevel, 13, true);
+        String modeLabel = reviewMode ? "RÉVISION DES ERREURS" : (customMode ? customModeTitle : "NIVEAU " + activeLevel);
+        TextView mode = text(modeLabel, 13, true);
         mode.setTextColor(accentColor());
         mode.setPadding(0, dp(18), 0, dp(4));
         root.addView(mode);
 
-        addTitle(root, reviewMode ? "Renforce tes points faibles" : levels.get(activeLevel - 1).title, 25);
+        String screenTitle = reviewMode ? "Renforce tes points faibles" :
+                (customMode ? "Session personnalisée" : levels.get(activeLevel - 1).title);
+        addTitle(root, screenTitle, 25);
 
         pointsView = text("", 14, true);
         root.addView(pointsView);
@@ -504,6 +559,12 @@ public class MainActivity extends Activity {
         Question q = quiz.get(currentIndex);
         boolean isCorrect = index == q.correctIndex;
 
+        recordDailyAnswer();
+        recordCategoryResult(q.category, isCorrect);
+        if (index >= 0 && index < optionButtons.size()) {
+            optionButtons.get(index).performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+        }
+
         Set<String> wrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
         int answeredTotal = prefs.getInt("answeredTotal", 0) + 1;
         int correctTotal = prefs.getInt("correctTotal", 0);
@@ -535,6 +596,8 @@ public class MainActivity extends Activity {
         } else {
             streak = 0;
             wrong.add(q.text);
+            String mistakeKey = "mistake_" + Math.abs(q.text.hashCode());
+            prefs.edit().putInt(mistakeKey, prefs.getInt(mistakeKey, 0) + 1).apply();
             feedbackView.setText(
                 "✗ À revoir\n\n" +
                 "Bonne réponse : " + q.options.get(q.correctIndex) +
@@ -580,7 +643,7 @@ public class MainActivity extends Activity {
         int percent = quiz.isEmpty() ? 0 : correctCount * 100 / quiz.size();
         boolean newBest = false;
 
-        if (!reviewMode) {
+        if (!reviewMode && !customMode) {
             int previousBest = prefs.getInt("best_level_" + activeLevel, 0);
             newBest = percent > previousBest;
             if (newBest) prefs.edit().putInt("best_level_" + activeLevel, percent).apply();
@@ -593,7 +656,7 @@ public class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         scroll.addView(root);
 
-        addTitle(root, reviewMode ? "Révision terminée" : "Niveau terminé", 30);
+        addTitle(root, reviewMode ? "Révision terminée" : (customMode ? customModeTitle : "Niveau terminé"), 30);
 
         TextView big = text(percent + "%", 46, true);
         big.setTextColor(percent >= PASS_PERCENT ? successColor() : accentColor());
@@ -613,6 +676,8 @@ public class MainActivity extends Activity {
             message = remaining == 0
                 ? "Excellent : toutes les erreurs enregistrées ont été corrigées."
                 : remaining + " question(s) restent dans ta liste de révision.";
+        } else if (customMode) {
+            message = "Session terminée. Les erreurs ont été ajoutées automatiquement à ta liste de révision.";
         } else if (percent >= 90) {
             message = "Excellent. Les commandes de ce niveau sont bien maîtrisées.";
         } else if (percent >= PASS_PERCENT) {
@@ -624,9 +689,12 @@ public class MainActivity extends Activity {
         }
         root.addView(card(message), spaced(14));
 
-        Button replay = actionButton(reviewMode ? "Réviser les erreurs restantes" : "Rejouer ce niveau");
+        Button replay = actionButton(reviewMode ? "Réviser les erreurs restantes" :
+                (customMode ? "Nouvelle session" : "Rejouer ce niveau"));
         replay.setOnClickListener(v -> {
-            if (reviewMode) startReviewErrors(); else startLevel(activeLevel);
+            if (reviewMode) startReviewErrors();
+            else if (customMode) startQuickQuiz();
+            else startLevel(activeLevel);
         });
         root.addView(replay);
 
@@ -639,6 +707,211 @@ public class MainActivity extends Activity {
         root.addView(home);
 
         setContentView(scroll);
+    }
+
+    private void startQuickQuiz() {
+        List<Question> pool = new ArrayList<>(questions);
+        Collections.shuffle(pool);
+        quiz = new ArrayList<>(pool.subList(0, Math.min(10, pool.size())));
+        reviewMode = false;
+        customMode = true;
+        customModeTitle = "QUIZ RAPIDE";
+        activeLevel = 0;
+        currentIndex = 0;
+        correctCount = 0;
+        sessionPoints = 0;
+        streak = 0;
+        showQuizScreen();
+    }
+
+    private void startAdaptiveQuiz() {
+        Set<String> wrong = prefs.getStringSet("wrongQuestions", Collections.emptySet());
+        List<Question> pool = new ArrayList<>();
+        for (Question q : questions) if (wrong.contains(q.text)) pool.add(q);
+        List<Question> rest = new ArrayList<>(questions);
+        Collections.shuffle(rest);
+        for (Question q : rest) {
+            if (pool.size() >= 12) break;
+            if (!pool.contains(q)) pool.add(q);
+        }
+        Collections.shuffle(pool);
+        quiz = pool;
+        reviewMode = false;
+        customMode = true;
+        customModeTitle = "ENTRAÎNEMENT ADAPTATIF";
+        activeLevel = 0;
+        currentIndex = 0;
+        correctCount = 0;
+        sessionPoints = 0;
+        streak = 0;
+        showQuizScreen();
+    }
+
+    private void showCategoryPicker() {
+        applySystemBars();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(bgColor());
+        LinearLayout root = column(18, 18, 18, 28);
+        scroll.addView(root);
+        addTitle(root, "Révision ciblée", 28);
+        addBody(root, "Choisis un thème. Les questions restent basées sur tes supports de cours.", 15);
+
+        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits"};
+        for (String cat : cats) {
+            Button b = secondaryFullButton(cat);
+            b.setOnClickListener(v -> startCategoryQuiz(((Button) v).getText().toString()));
+            root.addView(b);
+        }
+        Button back = secondaryFullButton("← Accueil");
+        back.setOnClickListener(v -> showHome());
+        root.addView(back, spaced(10));
+        setContentView(scroll);
+    }
+
+    private void startCategoryQuiz(String category) {
+        quiz = new ArrayList<>();
+        for (Question q : questions) if (category.equals(q.category)) quiz.add(q);
+        Collections.shuffle(quiz);
+        reviewMode = false;
+        customMode = true;
+        customModeTitle = "THÈME : " + category.toUpperCase(Locale.ROOT);
+        activeLevel = 0;
+        currentIndex = 0;
+        correctCount = 0;
+        sessionPoints = 0;
+        streak = 0;
+        showQuizScreen();
+    }
+
+    private void showCourseMenu() {
+        applySystemBars();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(bgColor());
+        LinearLayout root = column(18, 18, 18, 28);
+        scroll.addView(root);
+        addTitle(root, "Fiches de cours", 28);
+        addBody(root, "Relis une fiche courte avant de passer aux exercices.", 15);
+
+        for (LevelInfo info : levels) {
+            Button b = secondaryFullButton("Niveau " + info.number + " — " + info.title);
+            b.setOnClickListener(v -> showLesson(info.number));
+            root.addView(b);
+        }
+        Button back = secondaryFullButton("← Accueil");
+        back.setOnClickListener(v -> showHome());
+        root.addView(back, spaced(10));
+        setContentView(scroll);
+    }
+
+    private void showLesson(int level) {
+        applySystemBars();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(bgColor());
+        LinearLayout root = column(18, 18, 18, 28);
+        scroll.addView(root);
+        LevelInfo info = levels.get(level - 1);
+        addTitle(root, info.title, 27);
+        addBody(root, info.description, 15);
+
+        if (level == 1) {
+            addMemoGroup(root, "Navigation",
+                "pwd — afficher le chemin courant",
+                "ls — lister le contenu",
+                "ls -la — détails + fichiers cachés",
+                "cd dossier — entrer dans un dossier",
+                "cd .. — remonter d'un niveau",
+                "cd ~ — revenir au dossier personnel",
+                "mkdir -p a/b/c — créer une arborescence",
+                "touch fichier.txt — créer un fichier vide");
+        } else if (level == 2) {
+            addMemoGroup(root, "Fichiers et Git",
+                "cat fichier.txt — lire un fichier",
+                "echo \"texte\" > fichier.txt — créer/remplacer",
+                "echo \"suite\" >> fichier.txt — ajouter",
+                "rm -r dossier — supprimer récursivement",
+                "git init — initialiser un dépôt",
+                "git status — voir l'état du dépôt",
+                "git add README.md — préparer un fichier",
+                "git commit -m \"message\" — créer un commit");
+        } else if (level == 3) {
+            addMemoGroup(root, "Workflow",
+                "git status → git add → git commit → git push",
+                "git remote -v — voir les remotes",
+                "git diff — changements non staged",
+                "git diff --staged — changements staged",
+                "HEAD — position courante",
+                "une branche — pointeur nommé vers un commit");
+        } else if (level == 4) {
+            addMemoGroup(root, "Branches et SSH",
+                "git switch -c feature — créer + basculer",
+                "git branch -d feature — supprimer localement",
+                "git push origin feature — publier une branche",
+                "git push origin --delete feature — supprimer à distance",
+                "ssh-keygen -t ed25519 -C \"email\" — créer une paire de clés",
+                "cat ~/.ssh/id_ed25519.pub — afficher la clé publique",
+                "ssh -T git@github.com — tester l'authentification");
+        } else {
+            addMemoGroup(root, "Synchronisation et conflits",
+                "git pull --rebase origin main — récupérer puis rejouer les commits locaux",
+                "<<<<<<< HEAD — version de la branche courante",
+                "======= — séparation des versions",
+                ">>>>>>> — version entrante",
+                "git add fichier — marquer la résolution dans l'index");
+        }
+
+        Button practice = actionButton("S'entraîner sur ce niveau");
+        practice.setOnClickListener(v -> startLevel(level));
+        root.addView(practice, spaced(12));
+        Button back = secondaryFullButton("← Fiches de cours");
+        back.setOnClickListener(v -> showCourseMenu());
+        root.addView(back);
+        setContentView(scroll);
+    }
+
+    private void recordDailyAnswer() {
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date());
+        String savedDay = prefs.getString("daily_day", "");
+        if (!today.equals(savedDay)) {
+            prefs.edit().putString("daily_day", today).putInt("daily_answered", 1).apply();
+        } else {
+            prefs.edit().putInt("daily_answered", prefs.getInt("daily_answered", 0) + 1).apply();
+        }
+    }
+
+    private int dailyAnswered() {
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date());
+        return today.equals(prefs.getString("daily_day", "")) ? prefs.getInt("daily_answered", 0) : 0;
+    }
+
+    private void recordCategoryResult(String category, boolean correct) {
+        String a = "cat_answered_" + category;
+        String c = "cat_correct_" + category;
+        SharedPreferences.Editor e = prefs.edit().putInt(a, prefs.getInt(a, 0) + 1);
+        if (correct) e.putInt(c, prefs.getInt(c, 0) + 1);
+        e.apply();
+    }
+
+    private void shareProgress() {
+        int answered = prefs.getInt("answeredTotal", 0);
+        int correct = prefs.getInt("correctTotal", 0);
+        int accuracy = answered == 0 ? 0 : correct * 100 / answered;
+        StringBuilder report = new StringBuilder();
+        report.append("Ubuntu & Git Academy — progression\n\n");
+        report.append("XP : ").append(prefs.getInt("totalPoints", 0)).append("\n");
+        report.append("Questions : ").append(answered).append("\n");
+        report.append("Précision : ").append(accuracy).append("%\n");
+        report.append("Meilleure série : ").append(prefs.getInt("bestStreak", 0)).append("\n");
+        report.append("Lab XP : ").append(prefs.getInt("labPoints", 0)).append("\n\n");
+        for (int i = 1; i <= 5; i++) {
+            report.append("Niveau ").append(i).append(" : ")
+                  .append(prefs.getInt("best_level_" + i, 0)).append("%\n");
+        }
+
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_SUBJECT, "Ma progression Ubuntu & Git Academy");
+        intent.putExtra(Intent.EXTRA_TEXT, report.toString());
+        startActivity(Intent.createChooser(intent, "Exporter la progression"));
     }
 
     private void showStats() {
@@ -689,6 +962,16 @@ public class MainActivity extends Activity {
             Button review = actionButton("Réviser " + wrongCount + " erreur(s)");
             review.setOnClickListener(v -> startReviewErrors());
             root.addView(review, spaced(12));
+        }
+
+        addSection(root, "Maîtrise par thème");
+        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits"};
+        for (String cat : cats) {
+            int a = prefs.getInt("cat_answered_" + cat, 0);
+            int c = prefs.getInt("cat_correct_" + cat, 0);
+            int p = a == 0 ? 0 : c * 100 / a;
+            TextView row = card(cat + " : " + p + "%  •  " + c + "/" + a);
+            root.addView(row, spaced(6));
         }
 
         addBottomNav(root, "Stats");
