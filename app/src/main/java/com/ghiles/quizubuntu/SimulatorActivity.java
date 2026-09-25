@@ -225,6 +225,7 @@ public class SimulatorActivity extends Activity {
     private boolean guidedMode = true;
 
     private final List<String> history = new ArrayList<>();
+    private final List<String> commandHistory = new ArrayList<>();
 
     private String cwd = "/home/ubuntu";
     private final Set<String> files = new HashSet<>();
@@ -289,6 +290,7 @@ public class SimulatorActivity extends Activity {
         branch = "main";
 
         history.clear();
+        commandHistory.clear();
         appendTerminal("Ubuntu 24.04 LTS — terminal simulé");
         appendTerminal("Tape help pour voir les commandes prises en charge.");
         appendTerminal("Aucune commande n'est exécutée sur le vrai téléphone.");
@@ -713,6 +715,7 @@ public class SimulatorActivity extends Activity {
         if (command.trim().isEmpty()) return;
 
         appendTerminal("ubuntu@academy:" + shortCwd() + "$ " + command);
+        commandHistory.add(command);
 
         String output = executeSimulated(command);
         if (!output.isEmpty()) appendTerminal(output);
@@ -781,7 +784,6 @@ public class SimulatorActivity extends Activity {
         }
 
         String n = normalize(command);
-        history.add(command);
 
         if ("help".equals(n)) {
             return
@@ -802,13 +804,10 @@ public class SimulatorActivity extends Activity {
         if ("history".equals(n)) {
             StringBuilder builder = new StringBuilder();
 
-            for (int i = 0; i < history.size(); i++) {
-                String item = history.get(i);
-                if (item.startsWith("__OUT__")) continue;
-
+            for (int i = 0; i < commandHistory.size(); i++) {
                 builder.append(i + 1)
                     .append("  ")
-                    .append(item)
+                    .append(commandHistory.get(i))
                     .append("\n");
             }
             return builder.toString().trim();
