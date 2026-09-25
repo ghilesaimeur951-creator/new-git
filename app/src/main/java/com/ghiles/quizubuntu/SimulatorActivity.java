@@ -939,6 +939,7 @@ public class SimulatorActivity extends Activity {
             "Missions guidées",
             "GitHub réel",
             "Aide & commandes",
+            "Catalogue 500+ commandes",
             "Retour à l'Academy"
         };
 
@@ -955,11 +956,94 @@ public class SimulatorActivity extends Activity {
                     setEnvironment(true);
                 } else if (which == 3) {
                     showHelpSections();
+                } else if (which == 4) {
+                    showCommandCatalogDialog("");
                 } else {
                     finish();
                 }
             })
             .show();
+    }
+
+    private void showCommandCatalogDialog(String initialQuery) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(6), dp(16), dp(6));
+
+        TextView counter = terminalText(
+            CommandCatalog.count() + " signatures et exemples disponibles",
+            11,
+            true,
+            Color.rgb(45,45,49)
+        );
+        box.addView(counter);
+
+        EditText search = new EditText(this);
+        search.setHint("Ex. checkout, branch, grep, ssh, archive…");
+        search.setSingleLine(true);
+        search.setText(initialQuery);
+        search.setTextSize(14f);
+        box.addView(search);
+
+        TextView results = new TextView(this);
+        results.setTypeface(Typeface.MONOSPACE);
+        results.setTextSize(11.5f);
+        results.setTextColor(Color.rgb(40,40,44));
+        results.setText(buildCatalogText(initialQuery));
+        results.setTextIsSelectable(true);
+        results.setPadding(0, dp(8), 0, dp(6));
+
+        ScrollView resultScroll = new ScrollView(this);
+        resultScroll.addView(results);
+        box.addView(
+            resultScroll,
+            new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(360)
+            )
+        );
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Catalogue Ubuntu & Git")
+            .setView(box)
+            .setNegativeButton("Fermer", null)
+            .setPositiveButton("Rechercher", null)
+            .create();
+
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    results.setText(buildCatalogText(search.getText().toString()));
+                    resultScroll.post(() -> resultScroll.scrollTo(0, 0));
+                });
+        });
+
+        dialog.show();
+    }
+
+    private String buildCatalogText(String query) {
+        List<CommandCatalog.Entry> entries = CommandCatalog.search(query, 80);
+
+        if (entries.isEmpty()) {
+            return "Aucune commande trouvée.";
+        }
+
+        StringBuilder out = new StringBuilder();
+
+        for (CommandCatalog.Entry entry : entries) {
+            out.append(entry.command)
+                .append("\n  ")
+                .append(entry.category)
+                .append(" — ")
+                .append(entry.description)
+                .append("\n\n");
+        }
+
+        if (CommandCatalog.search(query, 81).size() > 80) {
+            out.append("… résultats supplémentaires. Affine la recherche.");
+        }
+
+        return out.toString().trim();
     }
 
     private void showHelpSections() {
