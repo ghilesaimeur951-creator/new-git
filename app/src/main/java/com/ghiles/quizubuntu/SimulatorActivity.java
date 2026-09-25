@@ -1,15 +1,26 @@
 package com.ghiles.quizubuntu;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.Spannable;
+import android.text.SpannableStringBuilder;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
@@ -18,31 +29,57 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+/**
+ * Ubuntu Lab V4.
+ *
+ * - SIMULATION: safe in-memory Ubuntu/Git machine based on the user's course PDFs.
+ * - GITHUB RÉEL: JGit repository in the app-private sandbox, HTTPS authenticated.
+ *
+ * No arbitrary Android shell command is ever executed.
+ */
 public class SimulatorActivity extends Activity {
+
+    private static final int UBUNTU_BG = Color.rgb(48, 10, 36);
+    private static final int TERMINAL_BG = Color.rgb(28, 28, 30);
+    private static final int TERMINAL_PANEL = Color.rgb(35, 35, 38);
+    private static final int TERMINAL_TEXT = Color.rgb(238, 238, 238);
+    private static final int TERMINAL_MUTED = Color.rgb(170, 170, 176);
+    private static final int UBUNTU_ORANGE = Color.rgb(233, 84, 32);
+    private static final int PROMPT_GREEN = Color.rgb(78, 201, 109);
+    private static final int PATH_BLUE = Color.rgb(94, 161, 255);
+    private static final int DIRECTORY_BLUE = Color.rgb(92, 160, 255);
+    private static final int ERROR_RED = Color.rgb(255, 99, 105);
+    private static final int SUCCESS_GREEN = Color.rgb(82, 201, 111);
+    private static final int REAL_RED = Color.rgb(242, 86, 86);
 
     static class Scenario {
         final String title;
         final String objective;
+        final String hint;
+        final String setupKey;
         final List<String> accepted;
         final String[] choices;
-        final String hint;
 
-        Scenario(String title, String objective, String hint, String[] choices, String... accepted) {
+        Scenario(
+            String title,
+            String objective,
+            String hint,
+            String setupKey,
+            String[] choices,
+            String... accepted
+        ) {
             this.title = title;
             this.objective = objective;
             this.hint = hint;
+            this.setupKey = setupKey == null ? "" : setupKey;
             this.choices = choices;
             this.accepted = Arrays.asList(accepted);
         }
@@ -50,89 +87,177 @@ public class SimulatorActivity extends Activity {
 
     private final List<Scenario> scenarios = Arrays.asList(
         new Scenario(
-            "Se repérer",
-            "Tu viens d'ouvrir un terminal. Affiche le chemin absolu du dossier courant.",
-            "La commande signifie Print Working Directory.",
+            "Où suis-je ?",
+            "Affiche le chemin absolu du dossier courant.",
+            "Print Working Directory.",
+            "",
             new String[]{"pwd", "ls", "cd ~", "history"},
             "pwd"
         ),
         new Scenario(
-            "Inspecter le dossier",
-            "Affiche les fichiers cachés et les détails du dossier courant.",
-            "Combine l'affichage détaillé et les fichiers cachés.",
+            "Voir les fichiers cachés",
+            "Liste le dossier courant avec détails et fichiers cachés.",
+            "Combine -l et -a.",
+            "",
             new String[]{"ls", "ls -l", "ls -la", "pwd"},
             "ls -la", "ls -al"
         ),
         new Scenario(
-            "Créer une arborescence",
-            "Crée les dossiers projet/src en une seule commande, même si projet n'existe pas.",
-            "L'option -p crée les répertoires parents nécessaires.",
-            new String[]{"mkdir projet/src", "mkdir -p projet/src", "touch projet/src", "cp -r projet/src"},
-            "mkdir -p projet/src"
+            "Arborescence",
+            "Crée Projets/demo/src en une seule commande.",
+            "L'option -p crée les parents nécessaires.",
+            "",
+            new String[]{
+                "mkdir Projets/demo/src",
+                "mkdir -p Projets/demo/src",
+                "touch Projets/demo/src",
+                "cp -r Projets/demo/src"
+            },
+            "mkdir -p Projets/demo/src"
         ),
         new Scenario(
             "Créer un fichier",
-            "Crée un fichier vide README.md.",
-            "Cette commande sert à créer un fichier vide.",
-            new String[]{"touch README.md", "mkdir README.md", "cat README.md", "nano -r README.md"},
-            "touch README.md"
+            "Crée un fichier vide demo.txt.",
+            "La commande ne crée pas un dossier.",
+            "",
+            new String[]{"touch demo.txt", "mkdir demo.txt", "cat demo.txt", "rm demo.txt"},
+            "touch demo.txt"
+        ),
+        new Scenario(
+            "Ajouter du contenu",
+            "Ajoute le mot suite à la fin de notes.txt sans remplacer son contenu.",
+            "La double redirection ajoute à la fin.",
+            "",
+            new String[]{
+                "echo \"suite\" >> notes.txt",
+                "echo \"suite\" > notes.txt",
+                "cat suite >> notes.txt",
+                "touch suite"
+            },
+            "echo \"suite\" >> notes.txt"
         ),
         new Scenario(
             "Initialiser Git",
-            "Tu es dans ton projet. Transforme le dossier courant en dépôt Git local.",
-            "Il faut initialiser les métadonnées Git.",
-            new String[]{"git init", "git add .", "git clone", "git status"},
+            "Dans ~/projet, transforme le dossier en dépôt Git local.",
+            "Initialise les métadonnées .git.",
+            "fresh-git",
+            new String[]{"git init", "git status", "git clone .", "git add ."},
             "git init"
         ),
         new Scenario(
-            "Vérifier Git",
-            "Tu as modifié des fichiers. Vérifie l'état du working directory et de la staging area.",
-            "Cette commande indique les fichiers modifiés, staged et non suivis.",
-            new String[]{"git log", "git status", "git push", "git remote -v"},
+            "État du dépôt",
+            "Vérifie l'état du working directory et de la staging area.",
+            "Cette commande est le premier diagnostic Git.",
+            "git-ready",
+            new String[]{"git log", "git status", "git diff --staged", "git push"},
             "git status"
         ),
         new Scenario(
-            "Préparer un commit",
+            "Staging",
             "Prépare README.md pour le prochain commit.",
-            "Place l'état actuel du fichier dans la staging area.",
+            "Copie l'état choisi du fichier dans l'index.",
+            "git-ready",
             new String[]{"git add README.md", "git commit README.md", "git push README.md", "git log README.md"},
             "git add README.md"
         ),
         new Scenario(
-            "Créer un commit",
-            "Crée un commit avec le message Ajoute le README.",
-            "L'option -m permet de fournir le message.",
+            "Commit",
+            "Crée un commit avec le message Initial commit.",
+            "Utilise l'option -m.",
+            "git-ready",
             new String[]{
-                "git commit -m \"Ajoute le README\"",
-                "git add -m \"Ajoute le README\"",
-                "git push -m \"Ajoute le README\"",
-                "git status -m \"Ajoute le README\""
+                "git commit -m \"Initial commit\"",
+                "git add -m \"Initial commit\"",
+                "git log -m \"Initial commit\"",
+                "git push -m \"Initial commit\""
             },
-            "git commit -m \"Ajoute le README\""
+            "git commit -m \"Initial commit\""
         ),
         new Scenario(
-            "Pas encore relié à GitHub",
-            "Tu veux vérifier si ton dépôt local possède déjà un remote GitHub. Quelle commande l'affiche ?",
-            "Cette commande affiche les remotes et leurs URL.",
-            new String[]{"git status", "git remote -v", "git branch -a", "git log -p"},
+            "Lire les changements",
+            "Affiche les changements non staged du working directory.",
+            "Compare working directory et index.",
+            "git-ready",
+            new String[]{"git diff", "git diff --staged", "git log -p", "git status -s"},
+            "git diff"
+        ),
+        new Scenario(
+            "Lire le staging",
+            "Affiche ce qui est déjà préparé pour le prochain commit.",
+            "Compare index et HEAD.",
+            "git-ready",
+            new String[]{"git diff --staged", "git diff", "git branch", "git remote -v"},
+            "git diff --staged"
+        ),
+        new Scenario(
+            "Créer une branche",
+            "Crée la branche cheese et bascule immédiatement dessus.",
+            "switch -c crée puis checkout.",
+            "git-ready",
+            new String[]{"git switch cheese", "git switch -c cheese", "git branch -d cheese", "git push cheese"},
+            "git switch -c cheese"
+        ),
+        new Scenario(
+            "Voir les branches",
+            "Affiche les branches locales et marque la branche active avec *.",
+            "La sous-commande branch sans argument est suffisante.",
+            "git-ready",
+            new String[]{"git branch", "git log", "git status", "git remote -v"},
+            "git branch"
+        ),
+        new Scenario(
+            "Vérifier origin",
+            "Affiche les URL fetch et push du remote origin.",
+            "L'option -v signifie verbose.",
+            "remote-ready",
+            new String[]{"git remote -v", "git status", "git branch -a", "git log -p"},
             "git remote -v"
         ),
         new Scenario(
-            "Relier le dépôt",
-            "Aucun remote n'est configuré. Ajoute origin vers git@github.com:USER/REPO.git.",
-            "La syntaxe est : git remote add NOM URL.",
+            "Ajouter origin",
+            "Configure origin vers https://github.com/USER/REPO.git.",
+            "remote add origin URL.",
+            "git-ready",
             new String[]{
-                "git remote add origin git@github.com:USER/REPO.git",
+                "git remote add origin https://github.com/USER/REPO.git",
                 "git remote -v origin",
                 "git push origin",
                 "git init origin"
             },
-            "git remote add origin git@github.com:USER/REPO.git"
+            "git remote add origin https://github.com/USER/REPO.git"
+        ),
+        new Scenario(
+            "Premier push",
+            "Publie main sur origin et configure le suivi distant.",
+            "Utilise -u ou --set-upstream.",
+            "remote-ready",
+            new String[]{
+                "git push -u origin main",
+                "git push main origin",
+                "git remote main",
+                "git pull -u main"
+            },
+            "git push -u origin main",
+            "git push --set-upstream origin main"
+        ),
+        new Scenario(
+            "Synchroniser par rebase",
+            "Récupère main depuis origin puis rejoue tes commits locaux au-dessus.",
+            "Le support utilise pull --rebase.",
+            "remote-ready",
+            new String[]{
+                "git pull --rebase origin main",
+                "git push --force origin main",
+                "git fetch main",
+                "git status --rebase"
+            },
+            "git pull --rebase origin main"
         ),
         new Scenario(
             "Créer une clé SSH",
-            "Tu n'as pas encore de clé SSH. Crée une paire de clés Ed25519 avec un commentaire email.",
-            "La clé publique aura l'extension .pub ; la clé privée ne doit pas être partagée.",
+            "Crée une paire de clés Ed25519 avec un commentaire email.",
+            "La clé publique finit par .pub.",
+            "",
             new String[]{
                 "ssh-keygen -t ed25519 -C \"email\"",
                 "ssh-add -t ed25519",
@@ -142,108 +267,134 @@ public class SimulatorActivity extends Activity {
             "ssh-keygen -t ed25519 -C \"email\""
         ),
         new Scenario(
+            "Démarrer ssh-agent",
+            "Démarre ssh-agent dans le shell courant.",
+            "Le support utilise eval avec ssh-agent -s.",
+            "",
+            new String[]{
+                "eval \"$(ssh-agent -s)\"",
+                "ssh-add ~/.ssh/id_ed25519",
+                "ssh -T git@github.com",
+                "git status"
+            },
+            "eval \"$(ssh-agent -s)\""
+        ),
+        new Scenario(
             "Tester GitHub en SSH",
             "Teste l'authentification SSH auprès de GitHub.",
-            "La connexion de test utilise l'utilisateur git sur github.com.",
-            new String[]{"ssh -T git@github.com", "git status github.com", "ssh-add github.com", "git remote -T"},
+            "Utilisateur git, option -T.",
+            "",
+            new String[]{"ssh -T git@github.com", "ssh github.com", "git ssh -T", "ssh-add github.com"},
             "ssh -T git@github.com"
         ),
         new Scenario(
-            "Publier main",
-            "Publie pour la première fois la branche main sur origin en configurant le suivi.",
-            "L'option -u configure l'upstream.",
-            new String[]{"git push -u origin main", "git push main origin", "git remote main", "git add origin main"},
-            "git push -u origin main"
-        ),
-        new Scenario(
-            "Synchroniser avant de pousser",
-            "Le dépôt distant possède des commits absents localement. Récupère-les puis rejoue tes commits locaux au-dessus.",
-            "Le support utilise pull avec rebase sur origin/main.",
+            "Déclencher un conflit",
+            "Le local et origin/main ont modifié la même zone. Lance le pull qui tente l'intégration.",
+            "pull = fetch + intégration.",
+            "conflict-pull",
             new String[]{
-                "git pull --rebase origin main",
-                "git push --force origin main",
-                "git clone origin main",
-                "git status --rebase"
+                "git pull origin main",
+                "git push origin main",
+                "git fetch --all",
+                "git diff --staged"
             },
-            "git pull --rebase origin main"
+            "git pull origin main"
         ),
         new Scenario(
-            "Créer une branche",
-            "Crée une branche feature et bascule immédiatement dessus.",
-            "switch -c crée la branche puis place HEAD dessus.",
-            new String[]{"git switch feature", "git switch -c feature", "git branch -d feature", "git push feature"},
-            "git switch -c feature"
+            "Observer le conflit",
+            "Un merge est en conflit. Affiche l'état du dépôt.",
+            "Commence par le diagnostic.",
+            "",
+            new String[]{"git status", "git push", "git branch -d main", "git log"},
+            "git status"
         ),
         new Scenario(
-            "Voir les changements",
-            "Affiche les changements non staged du working directory.",
-            "Cette commande compare le working directory à la staging area.",
-            new String[]{"git diff", "git diff --staged", "git log -p", "git status -s"},
-            "git diff"
+            "Lire les marqueurs",
+            "Affiche README.md pour voir <<<<<<<, ======= et >>>>>>>.",
+            "Lis le fichier directement.",
+            "",
+            new String[]{"cat README.md", "git status README.md", "git push README.md", "pwd README.md"},
+            "cat README.md"
         ),
         new Scenario(
-            "Voir ce qui est staged",
-            "Tu as préparé des changements avec git add. Affiche ce qui est déjà prêt pour le prochain commit.",
-            "Cette commande compare la staging area à HEAD.",
-            new String[]{"git diff --staged", "git diff", "git log", "git remote -v"},
+            "Marquer la résolution",
+            "Après avoir corrigé README.md, marque le fichier comme résolu dans l'index.",
+            "En conflit, git add marque aussi la résolution.",
+            "",
+            new String[]{"git add README.md", "git push README.md", "git diff README.md", "git rm README.md"},
+            "git add README.md"
+        ),
+        new Scenario(
+            "Vérifier avant commit",
+            "Vérifie la version staged qui sera enregistrée.",
+            "Après git add, git diff peut être vide ; utilise --staged.",
+            "",
+            new String[]{"git diff --staged", "git diff", "git status -s", "git pull"},
             "git diff --staged"
         ),
         new Scenario(
-            "Résoudre un conflit",
-            "Tu as édité README.md et supprimé les marqueurs de conflit. Marque maintenant le fichier comme résolu dans l'index.",
-            "Après la résolution manuelle, git add enregistre la décision dans l'index.",
-            new String[]{"git add README.md", "git push README.md", "git status README.md", "git rm README.md"},
-            "git add README.md"
+            "Lire le graphe",
+            "Affiche une vue synthétique des commits, branches et merges.",
+            "Combine graph, oneline, decorate et all.",
+            "git-ready",
+            new String[]{
+                "git log --graph --oneline --decorate --all",
+                "git log -p",
+                "git status --graph",
+                "git branch --graph"
+            },
+            "git log --graph --oneline --decorate --all"
         )
     );
 
     private SharedPreferences prefs;
+    private VirtualMachine vm;
+    private SecureTokenStore tokenStore;
+    private RealGitClient realGit;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    private ScrollView contentScroll;
-    private LinearLayout contentRoot;
+    private ScrollView scroll;
+    private LinearLayout root;
+    private LinearLayout simulationModes;
+    private LinearLayout realControls;
     private LinearLayout choicesBox;
     private LinearLayout objectivePanel;
     private LinearLayout commandBar;
 
-    private TextView objectiveView;
     private TextView terminalView;
+    private TextView objectiveView;
     private TextView scoreView;
-    private TextView modeView;
+    private TextView interactionLabel;
+    private TextView realStatusView;
+    private TextView commandPromptView;
 
     private EditText commandInput;
-    private Button executeButton;
-    private Button hintButton;
-    private Button nextMissionButton;
-    private Button interactionModeButton;
-    private Button guidedModeButton;
-    private Button freeModeButton;
 
+    private Button simulationButton;
+    private Button realButton;
+    private Button guidedButton;
+    private Button freeButton;
+    private Button interactionButton;
+    private Button nextMissionButton;
+
+    private final SpannableStringBuilder terminal = new SpannableStringBuilder();
+    private final List<String> inputHistory = new ArrayList<>();
+    private int historyCursor = 0;
+
+    private boolean realEnvironment = false;
+    private boolean guidedMode = true;
+    private boolean typingMode = true;
     private int scenarioIndex = 0;
     private int labPoints = 0;
-
-    private boolean typingMode = true;
-    private boolean guidedMode = true;
-
-    private final List<String> history = new ArrayList<>();
-    private final List<String> commandHistory = new ArrayList<>();
-
-    private String cwd = "/home/ubuntu";
-    private final Set<String> files = new HashSet<>();
-    private final Set<String> dirs = new HashSet<>();
-    private final Map<String,String> contents = new HashMap<>();
-
-    private boolean gitInit = false;
-    private boolean staged = false;
-    private boolean committed = false;
-    private String remoteOrigin = "";
-    private boolean sshKey = false;
-    private String branch = "main";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         prefs = getSharedPreferences("quiz_progress", MODE_PRIVATE);
+        vm = new VirtualMachine();
+        tokenStore = new SecureTokenStore(this);
+        realGit = new RealGitClient(this, tokenStore);
 
         getWindow().setSoftInputMode(
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE |
@@ -251,291 +402,439 @@ public class SimulatorActivity extends Activity {
         );
 
         labPoints = prefs.getInt("labPoints", 0);
-        typingMode = prefs.getBoolean("simTypingMode", true);
         guidedMode = prefs.getBoolean("simGuidedMode", true);
+        typingMode = prefs.getBoolean("simTypingMode", true);
+        realEnvironment = prefs.getBoolean("labRealEnvironment", false);
 
-        resetMachine();
         buildUi();
 
-        if (guidedMode) {
-            showScenario();
+        appendSystem("Ubuntu 24.04 LTS — Ubuntu & Git Academy");
+        appendSystem("Environnement pédagogique sécurisé. Tape help pour l'aide.");
+
+        if (realEnvironment) {
+            setEnvironment(true);
         } else {
-            showFreeTerminal();
+            setEnvironment(false);
         }
     }
 
-    private void resetMachine() {
-        cwd = "/home/ubuntu";
-
-        files.clear();
-        dirs.clear();
-        contents.clear();
-
-        dirs.add("/home/ubuntu");
-        dirs.add("Documents");
-        dirs.add("Téléchargements");
-        dirs.add("projet");
-
-        files.add("notes.txt");
-        files.add("README.md");
-
-        contents.put("notes.txt", "Notes Ubuntu & Git");
-        contents.put("README.md", "# Projet de démonstration");
-
-        gitInit = false;
-        staged = false;
-        committed = false;
-        remoteOrigin = "";
-        sshKey = false;
-        branch = "main";
-
-        history.clear();
-        commandHistory.clear();
-        appendTerminal("Ubuntu 24.04 LTS — terminal simulé");
-        appendTerminal("Tape help pour voir les commandes prises en charge.");
-        appendTerminal("Aucune commande n'est exécutée sur le vrai téléphone.");
+    @Override
+    protected void onDestroy() {
+        executor.shutdownNow();
+        super.onDestroy();
     }
 
     private void buildUi() {
-        getWindow().setStatusBarColor(Color.rgb(48, 10, 36));
-        getWindow().setNavigationBarColor(Color.rgb(17, 17, 20));
+        getWindow().setStatusBarColor(UBUNTU_BG);
+        getWindow().setNavigationBarColor(Color.rgb(18,18,20));
 
         LinearLayout screen = new LinearLayout(this);
         screen.setOrientation(LinearLayout.VERTICAL);
-        screen.setBackgroundColor(Color.rgb(34, 8, 28));
+        screen.setBackgroundColor(UBUNTU_BG);
 
-        contentScroll = new ScrollView(this);
-        contentScroll.setFillViewport(true);
-        contentScroll.setBackgroundColor(Color.rgb(34, 8, 28));
+        scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(UBUNTU_BG);
 
-        contentRoot = new LinearLayout(this);
-        contentRoot.setOrientation(LinearLayout.VERTICAL);
-        contentRoot.setPadding(dp(14), dp(10), dp(14), dp(18));
-        contentScroll.addView(contentRoot);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(12), dp(6), dp(12), dp(14));
+        scroll.addView(root);
 
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f
+        screen.addView(
+            scroll,
+            new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
         );
-        screen.addView(contentScroll, scrollParams);
 
-        addTopBar();
-        addHeader();
-        addLabModeSelector();
-        addMissionPanel();
-        addInteractionModeRow();
-        addTerminalWindow();
+        addUbuntuTopBar();
+        addCompactHeader();
+        addEnvironmentSelector();
+        addSimulationModeSelector();
+        addRealControls();
+        addObjectivePanel();
+        addInteractionRow();
+        addTerminal();
+        addTerminalTools();
 
         choicesBox = new LinearLayout(this);
         choicesBox.setOrientation(LinearLayout.VERTICAL);
-        choicesBox.setPadding(0, dp(10), 0, 0);
-        contentRoot.addView(choicesBox);
+        choicesBox.setPadding(0, dp(7), 0, 0);
+        root.addView(choicesBox);
 
-        nextMissionButton = accentButton("Passer à l'objectif suivant");
+        nextMissionButton = accentButton("Objectif suivant");
         nextMissionButton.setOnClickListener(v -> {
             scenarioIndex = (scenarioIndex + 1) % scenarios.size();
             showScenario();
         });
-        contentRoot.addView(nextMissionButton, marginTop(12));
+        root.addView(nextMissionButton, topMargin(9));
 
-        Button reset = smallFullButton("Réinitialiser le PC simulé");
-        reset.setOnClickListener(v -> {
-            resetMachine();
-            refreshTerminal();
-            if (guidedMode) showScenario();
-            else showFreeTerminal();
-        });
-        contentRoot.addView(reset);
-
-        Button back = smallFullButton("← Retour à l'Academy");
-        back.setOnClickListener(v -> finish());
-        contentRoot.addView(back);
+        Button academy = smallFullButton("← Retour à l'Academy");
+        academy.setOnClickListener(v -> finish());
+        root.addView(academy, topMargin(8));
 
         buildFixedCommandBar(screen);
-
         protectFromSystemBars(screen);
+
         setContentView(screen);
     }
 
-    private void addTopBar() {
-        LinearLayout topbar = new LinearLayout(this);
-        topbar.setOrientation(LinearLayout.HORIZONTAL);
-        topbar.setGravity(Gravity.CENTER_VERTICAL);
-        topbar.setPadding(dp(8), dp(5), dp(8), dp(8));
+    private void addUbuntuTopBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(5), dp(3), dp(5), dp(5));
 
-        TextView activities = label("Activités", 13, true, Color.WHITE);
-        topbar.addView(
+        TextView activities = terminalText("Activités", 11, true, Color.WHITE);
+        bar.addView(
             activities,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
-        TextView clock = label(
-            "Ubuntu  •  Terminal  •  Wi-Fi  •  100%",
-            12,
-            false,
-            Color.rgb(230,230,230)
-        );
-        topbar.addView(clock);
-
-        contentRoot.addView(topbar);
-    }
-
-    private void addHeader() {
-        LinearLayout header = panel(Color.rgb(68, 18, 52), 18);
-
-        TextView title = label(">_  Ubuntu Lab", 24, true, Color.WHITE);
-        header.addView(title);
-
-        TextView subtitle = label(
-            "Missions guidées ou terminal libre • environnement simulé et sécurisé",
-            14,
-            false,
-            Color.rgb(226,210,222)
-        );
-        subtitle.setPadding(0, dp(6), 0, 0);
-        header.addView(subtitle);
-
-        contentRoot.addView(header, marginTop(4));
-
-        scoreView = label("", 14, true, Color.WHITE);
-        scoreView.setPadding(dp(4), dp(12), dp(4), dp(8));
-        contentRoot.addView(scoreView);
-    }
-
-    private void addLabModeSelector() {
-        LinearLayout selector = new LinearLayout(this);
-        selector.setOrientation(LinearLayout.HORIZONTAL);
-        selector.setPadding(0, 0, 0, dp(9));
-
-        guidedModeButton = smallButton("Missions guidées");
-        guidedModeButton.setOnClickListener(v -> setGuidedMode(true));
-        selector.addView(
-            guidedModeButton,
+        TextView center = terminalText("Ubuntu Lab", 11, true, Color.WHITE);
+        center.setGravity(Gravity.CENTER);
+        bar.addView(
+            center,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
-        freeModeButton = smallButton("Terminal libre");
-        freeModeButton.setOnClickListener(v -> setGuidedMode(false));
-        LinearLayout.LayoutParams freeParams = new LinearLayout.LayoutParams(
+        TextView indicators = terminalText("●  Wi-Fi  100%", 10, false, Color.rgb(226,226,230));
+        indicators.setGravity(Gravity.END);
+        bar.addView(
+            indicators,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        root.addView(bar);
+    }
+
+    private void addCompactHeader() {
+        LinearLayout header = panel(Color.rgb(67, 18, 51), 14);
+
+        TextView title = terminalText(">_ Ubuntu & Git Academy", 18, true, Color.WHITE);
+        header.addView(title);
+
+        TextView subtitle = terminalText(
+            "Terminal Ubuntu simulé + GitHub réel HTTPS",
+            11,
+            false,
+            Color.rgb(221,204,217)
+        );
+        subtitle.setPadding(0, dp(3), 0, 0);
+        header.addView(subtitle);
+
+        root.addView(header, topMargin(3));
+
+        scoreView = terminalText("", 11, true, Color.WHITE);
+        scoreView.setPadding(dp(2), dp(7), dp(2), dp(5));
+        root.addView(scoreView);
+    }
+
+    private void addEnvironmentSelector() {
+        TextView label = terminalText("ENVIRONNEMENT", 10, true, Color.rgb(230,210,225));
+        root.addView(label);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(4), 0, dp(6));
+
+        simulationButton = smallButton("SIMULATION");
+        simulationButton.setOnClickListener(v -> setEnvironment(false));
+        row.addView(
+            simulationButton,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        realButton = smallButton("GITHUB RÉEL");
+        realButton.setOnClickListener(v -> setEnvironment(true));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
             0,
             LinearLayout.LayoutParams.WRAP_CONTENT,
             1f
         );
-        freeParams.leftMargin = dp(7);
-        selector.addView(freeModeButton, freeParams);
+        rp.leftMargin = dp(6);
+        row.addView(realButton, rp);
 
-        contentRoot.addView(selector);
+        root.addView(row);
     }
 
-    private void addMissionPanel() {
-        objectivePanel = panel(Color.rgb(247, 244, 247), 18);
+    private void addSimulationModeSelector() {
+        simulationModes = new LinearLayout(this);
+        simulationModes.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView objectiveLabel = label("OBJECTIF", 12, true, Color.rgb(226,83,45));
-        objectivePanel.addView(objectiveLabel);
-
-        objectiveView = label("", 18, true, Color.rgb(30,30,34));
-        objectiveView.setPadding(0, dp(7), 0, dp(7));
-        objectivePanel.addView(objectiveView);
-
-        hintButton = smallButton("Indice");
-        hintButton.setOnClickListener(v -> {
-            Scenario scenario = scenarios.get(scenarioIndex);
-            appendTerminal("[indice] " + scenario.hint);
-            refreshTerminal();
-            scrollTerminalToBottom();
-        });
-        objectivePanel.addView(hintButton);
-
-        contentRoot.addView(objectivePanel, marginTop(6));
-    }
-
-    private void addInteractionModeRow() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(10), 0, dp(7));
-
-        modeView = label("", 13, true, Color.WHITE);
-        row.addView(
-            modeView,
+        guidedButton = smallButton("Missions guidées");
+        guidedButton.setOnClickListener(v -> setGuidedMode(true));
+        simulationModes.addView(
+            guidedButton,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
-        interactionModeButton = smallButton("Changer : QCM / saisie");
-        interactionModeButton.setOnClickListener(v -> {
+        freeButton = smallButton("Terminal libre");
+        freeButton.setOnClickListener(v -> setGuidedMode(false));
+        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        fp.leftMargin = dp(6);
+        simulationModes.addView(freeButton, fp);
+
+        root.addView(simulationModes);
+    }
+
+    private void addRealControls() {
+        realControls = panel(Color.rgb(55, 24, 36), 13);
+
+        realStatusView = terminalText("", 11, false, Color.WHITE);
+        realStatusView.setPadding(0, 0, 0, dp(6));
+        realControls.addView(realStatusView);
+
+        LinearLayout first = new LinearLayout(this);
+        first.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button connect = smallButton("Connexion GitHub");
+        connect.setOnClickListener(v -> showTokenDialog());
+        first.addView(
+            connect,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        Button repos = smallButton("Choisir dépôt");
+        repos.setOnClickListener(v -> chooseRepository());
+        LinearLayout.LayoutParams reposParams = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        reposParams.leftMargin = dp(6);
+        first.addView(repos, reposParams);
+
+        realControls.addView(first);
+
+        LinearLayout second = new LinearLayout(this);
+        second.setOrientation(LinearLayout.HORIZONTAL);
+        second.setPadding(0, dp(6), 0, 0);
+
+        Button clone = smallButton("Cloner / ouvrir");
+        clone.setOnClickListener(v -> cloneSelectedRepository(false));
+        second.addView(
+            clone,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        Button disconnect = smallButton("Déconnexion");
+        disconnect.setOnClickListener(v -> disconnectGitHub());
+        LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        dp.leftMargin = this.dp(6);
+        second.addView(disconnect, dp);
+
+        realControls.addView(second);
+        root.addView(realControls, topMargin(5));
+    }
+
+    private void addObjectivePanel() {
+        objectivePanel = panel(Color.rgb(247, 244, 247), 13);
+
+        TextView label = terminalText("OBJECTIF", 10, true, UBUNTU_ORANGE);
+        objectivePanel.addView(label);
+
+        objectiveView = terminalText("", 13, true, Color.rgb(30,30,34));
+        objectiveView.setPadding(0, dp(5), 0, dp(5));
+        objectivePanel.addView(objectiveView);
+
+        Button hint = smallButton("Indice");
+        hint.setId(View.generateViewId());
+        hint.setTag("hint");
+        hint.setOnClickListener(v -> {
+            Scenario scenario = scenarios.get(scenarioIndex);
+            appendSystem("[indice] " + scenario.hint);
+            refreshTerminal();
+            scrollBottom();
+        });
+        objectivePanel.addView(hint);
+
+        root.addView(objectivePanel, topMargin(5));
+    }
+
+    private Button findHintButton() {
+        for (int i = 0; i < objectivePanel.getChildCount(); i++) {
+            View child = objectivePanel.getChildAt(i);
+            if ("hint".equals(child.getTag()) && child instanceof Button) {
+                return (Button) child;
+            }
+        }
+        return null;
+    }
+
+    private void addInteractionRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(7), 0, dp(5));
+
+        interactionLabel = terminalText("", 10, true, Color.WHITE);
+        row.addView(
+            interactionLabel,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        interactionButton = smallButton("QCM / saisie");
+        interactionButton.setOnClickListener(v -> {
             typingMode = !typingMode;
             prefs.edit().putBoolean("simTypingMode", typingMode).apply();
             renderInteraction();
         });
-        row.addView(interactionModeButton);
+        row.addView(interactionButton);
 
-        contentRoot.addView(row);
+        root.addView(row);
     }
 
-    private void addTerminalWindow() {
-        LinearLayout terminalWindow = panel(Color.rgb(24, 24, 27), 16);
+    private void addTerminal() {
+        LinearLayout window = panel(TERMINAL_BG, 10);
+        window.setPadding(dp(10), dp(7), dp(10), dp(9));
 
-        LinearLayout terminalTitle = new LinearLayout(this);
-        terminalTitle.setOrientation(LinearLayout.HORIZONTAL);
-        terminalTitle.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout titleBar = new LinearLayout(this);
+        titleBar.setOrientation(LinearLayout.HORIZONTAL);
+        titleBar.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView dots = label("●  ●  ●", 12, true, Color.rgb(226,83,45));
-        terminalTitle.addView(dots);
+        TextView dots = terminalText("● ● ●", 9, true, UBUNTU_ORANGE);
+        titleBar.addView(dots);
 
-        TextView tty = label(
-            "  ubuntu@academy",
-            12,
+        TextView title = terminalText(
+            "  ubuntu@academy — bash",
+            10,
             false,
-            Color.rgb(190,190,194)
+            TERMINAL_MUTED
         );
-        terminalTitle.addView(tty);
+        titleBar.addView(title);
 
-        terminalWindow.addView(terminalTitle);
+        window.addView(titleBar);
 
-        terminalView = label("", 14, false, Color.rgb(226,226,230));
+        terminalView = new TextView(this);
         terminalView.setTypeface(Typeface.MONOSPACE);
+        terminalView.setTextSize(12f);
+        terminalView.setTextColor(TERMINAL_TEXT);
         terminalView.setTextIsSelectable(true);
-        terminalView.setText(historyText());
-        terminalView.setPadding(0, dp(10), 0, dp(8));
+        terminalView.setLineSpacing(0f, 1.03f);
+        terminalView.setPadding(0, dp(6), 0, dp(5));
+        terminalView.setMinLines(8);
+        terminalView.setText(terminal);
 
-        terminalWindow.addView(terminalView);
-        contentRoot.addView(terminalWindow);
+        window.addView(terminalView);
+        root.addView(window);
+    }
+
+    private void addTerminalTools() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(6), 0, 0);
+
+        Button clear = smallButton("Vider écran");
+        clear.setOnClickListener(v -> {
+            terminal.clear();
+            appendSystem(realEnvironment ? "[GITHUB RÉEL]" : "[SIMULATION]");
+            refreshTerminal();
+        });
+        row.addView(
+            clear,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        Button copy = smallButton("Copier sortie");
+        copy.setOnClickListener(v -> {
+            ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            manager.setPrimaryClip(
+                ClipData.newPlainText("Ubuntu Lab", terminal.toString())
+            );
+            appendSystem("[copié dans le presse-papiers]");
+            refreshTerminal();
+        });
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        cp.leftMargin = dp(5);
+        row.addView(copy, cp);
+
+        Button reset = smallButton("Reset VM");
+        reset.setOnClickListener(v -> confirmReset());
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        rp.leftMargin = dp(5);
+        row.addView(reset, rp);
+
+        root.addView(row);
     }
 
     private void buildFixedCommandBar(LinearLayout screen) {
         commandBar = new LinearLayout(this);
-        commandBar.setOrientation(LinearLayout.HORIZONTAL);
-        commandBar.setGravity(Gravity.CENTER_VERTICAL);
-        commandBar.setPadding(dp(12), dp(9), dp(12), dp(9));
-        commandBar.setBackgroundColor(Color.rgb(17,17,20));
+        commandBar.setOrientation(LinearLayout.VERTICAL);
+        commandBar.setPadding(dp(9), dp(6), dp(9), dp(7));
+        commandBar.setBackgroundColor(Color.rgb(18,18,20));
 
-        TextView prompt = label("$", 18, true, Color.WHITE);
-        prompt.setPadding(0, 0, dp(8), 0);
-        commandBar.addView(prompt);
+        commandPromptView = new TextView(this);
+        commandPromptView.setTypeface(Typeface.MONOSPACE);
+        commandPromptView.setTextSize(10.5f);
+        commandPromptView.setPadding(dp(2), 0, dp(2), dp(3));
+        commandBar.addView(commandPromptView);
+
+        LinearLayout inputRow = new LinearLayout(this);
+        inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button previous = compactButton("↑");
+        previous.setOnClickListener(v -> historyPrevious());
+        inputRow.addView(previous);
+
+        Button next = compactButton("↓");
+        next.setOnClickListener(v -> historyNext());
+        LinearLayout.LayoutParams nextParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        nextParams.leftMargin = dp(3);
+        inputRow.addView(next, nextParams);
 
         commandInput = new EditText(this);
         commandInput.setSingleLine(true);
         commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.rgb(155,155,160));
-        commandInput.setHint("écris une commande...");
+        commandInput.setHintTextColor(Color.rgb(135,135,142));
+        commandInput.setHint("commande…");
         commandInput.setTypeface(Typeface.MONOSPACE);
-        commandInput.setTextSize(15f);
-        commandInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        commandInput.setBackground(
-            rounded(Color.rgb(42,42,47), 12, Color.rgb(85,85,92))
+        commandInput.setTextSize(12.5f);
+        commandInput.setInputType(
+            InputType.TYPE_CLASS_TEXT |
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         );
-        commandInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        commandInput.setBackground(
+            rounded(
+                Color.rgb(39,39,43),
+                8,
+                Color.rgb(74,74,82)
+            )
+        );
+        commandInput.setPadding(dp(9), dp(7), dp(9), dp(7));
         commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
 
-        commandInput.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                contentScroll.postDelayed(this::scrollTerminalToBottom, 180);
+        commandInput.setOnFocusChangeListener((v, focused) -> {
+            if (focused) {
+                scroll.postDelayed(this::scrollBottom, 150);
             }
         });
 
         commandInput.setOnClickListener(v ->
-            contentScroll.postDelayed(this::scrollTerminalToBottom, 180)
+            scroll.postDelayed(this::scrollBottom, 150)
         );
 
         commandInput.setOnEditorActionListener((v, actionId, event) -> {
@@ -546,26 +845,28 @@ public class SimulatorActivity extends Activity {
                  event.getKeyCode() == KeyEvent.KEYCODE_ENTER);
 
             if (enter) {
-                executeTyped();
+                executeInput();
                 return true;
             }
+
             return false;
         });
 
-        commandBar.addView(
-            commandInput,
-            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        );
-
-        executeButton = accentButton("Exécuter");
-        executeButton.setOnClickListener(v -> executeTyped());
-
-        LinearLayout.LayoutParams executeParams = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(
+            0,
             LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            1f
         );
-        executeParams.leftMargin = dp(7);
-        commandBar.addView(executeButton, executeParams);
+        inputParams.leftMargin = dp(5);
+        inputParams.rightMargin = dp(5);
+        inputRow.addView(commandInput, inputParams);
+
+        Button execute = accentButton("Exécuter");
+        execute.setTextSize(11f);
+        execute.setOnClickListener(v -> executeInput());
+        inputRow.addView(execute);
+
+        commandBar.addView(inputRow);
 
         screen.addView(
             commandBar,
@@ -574,122 +875,186 @@ public class SimulatorActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         );
+
+        updateCommandPrompt();
+    }
+
+    private void setEnvironment(boolean real) {
+        realEnvironment = real;
+        prefs.edit().putBoolean("labRealEnvironment", real).apply();
+
+        styleEnvironmentButtons();
+
+        if (real) {
+            guidedMode = false;
+            simulationModes.setVisibility(View.GONE);
+            realControls.setVisibility(View.VISIBLE);
+            choicesBox.removeAllViews();
+            nextMissionButton.setVisibility(View.GONE);
+            interactionButton.setVisibility(View.GONE);
+
+            Button hint = findHintButton();
+            if (hint != null) hint.setVisibility(View.GONE);
+
+            interactionLabel.setText("MODE : terminal Git réel");
+            objectiveView.setText(
+                "GITHUB RÉEL\n\n" +
+                "Les commandes Git prises en charge utilisent réellement Internet et un dépôt stocké dans l'espace privé de l'application. " +
+                "Aucune opération réelle n'est lancée depuis le mode SIMULATION."
+            );
+
+            appendSystem("[GITHUB RÉEL] Les opérations réseau seront clairement signalées.");
+            refreshRealStatus();
+        } else {
+            realControls.setVisibility(View.GONE);
+            simulationModes.setVisibility(View.VISIBLE);
+
+            appendSystem("[SIMULATION] Machine Ubuntu virtuelle locale.");
+            styleLearningButtons();
+
+            if (guidedMode) showScenario();
+            else showFreeSimulation();
+        }
+
+        commandBar.setVisibility(View.VISIBLE);
+        commandInput.setVisibility(View.VISIBLE);
+        updateCommandPrompt();
+        refreshTerminal();
+        scrollBottom();
+    }
+
+    private void styleEnvironmentButtons() {
+        if (realEnvironment) {
+            simulationButton.setBackground(rounded(Color.rgb(232,232,236), 9, 0));
+            simulationButton.setTextColor(Color.rgb(45,45,49));
+
+            realButton.setBackground(rounded(REAL_RED, 9, 0));
+            realButton.setTextColor(Color.WHITE);
+        } else {
+            simulationButton.setBackground(rounded(UBUNTU_ORANGE, 9, 0));
+            simulationButton.setTextColor(Color.WHITE);
+
+            realButton.setBackground(rounded(Color.rgb(232,232,236), 9, 0));
+            realButton.setTextColor(Color.rgb(45,45,49));
+        }
     }
 
     private void setGuidedMode(boolean guided) {
-        guidedMode = guided;
-        prefs.edit().putBoolean("simGuidedMode", guidedMode).apply();
+        if (realEnvironment) return;
 
+        guidedMode = guided;
+        prefs.edit().putBoolean("simGuidedMode", guided).apply();
+
+        styleLearningButtons();
+
+        if (guided) showScenario();
+        else showFreeSimulation();
+    }
+
+    private void styleLearningButtons() {
         if (guidedMode) {
-            showScenario();
+            guidedButton.setBackground(rounded(UBUNTU_ORANGE, 9, 0));
+            guidedButton.setTextColor(Color.WHITE);
+
+            freeButton.setBackground(rounded(Color.rgb(232,232,236), 9, 0));
+            freeButton.setTextColor(Color.rgb(45,45,49));
         } else {
-            showFreeTerminal();
+            freeButton.setBackground(rounded(UBUNTU_ORANGE, 9, 0));
+            freeButton.setTextColor(Color.WHITE);
+
+            guidedButton.setBackground(rounded(Color.rgb(232,232,236), 9, 0));
+            guidedButton.setTextColor(Color.rgb(45,45,49));
         }
     }
 
     private void showScenario() {
+        if (realEnvironment) return;
+
         guidedMode = true;
-        prefs.edit().putBoolean("simGuidedMode", true).apply();
+        styleLearningButtons();
 
         Scenario scenario = scenarios.get(scenarioIndex);
 
-        objectivePanel.setVisibility(View.VISIBLE);
-        interactionModeButton.setVisibility(View.VISIBLE);
-        nextMissionButton.setVisibility(View.VISIBLE);
+        if (!scenario.setupKey.isEmpty()) {
+            vm.prepareScenario(scenario.setupKey);
+        }
 
+        objectivePanel.setVisibility(View.VISIBLE);
         objectiveView.setText(
             scenario.title + "\n\n" + scenario.objective
         );
 
+        Button hint = findHintButton();
+        if (hint != null) hint.setVisibility(View.VISIBLE);
+
+        interactionButton.setVisibility(View.VISIBLE);
+        nextMissionButton.setVisibility(View.VISIBLE);
+
         scoreView.setText(
             "Lab XP : " + labPoints +
-            "   •   Mission " + (scenarioIndex + 1) + " / " + scenarios.size()
+            "  •  Mission " + (scenarioIndex + 1) + "/" + scenarios.size()
         );
 
-        appendTerminal("");
-        appendTerminal("[mission] " + scenario.title);
-
-        styleLabModeButtons();
+        appendSystem("[mission] " + scenario.title);
         renderInteraction();
+        updateCommandPrompt();
         refreshTerminal();
     }
 
-    private void showFreeTerminal() {
+    private void showFreeSimulation() {
+        if (realEnvironment) return;
+
         guidedMode = false;
-        prefs.edit().putBoolean("simGuidedMode", false).apply();
+        styleLearningButtons();
 
         objectivePanel.setVisibility(View.VISIBLE);
         objectiveView.setText(
-            "Terminal libre\n\n" +
-            "Écris librement des commandes. Le simulateur reproduit un sous-ensemble de Bash, Git et SSH sans toucher au vrai téléphone."
+            "TERMINAL LIBRE\n\n" +
+            "Tape librement les commandes de tes supports Bash, Git, GitHub, SSH, branches, synchronisation et conflits. " +
+            "La machine conserve son état jusqu'au Reset VM."
         );
 
-        hintButton.setVisibility(View.GONE);
-        interactionModeButton.setVisibility(View.GONE);
+        Button hint = findHintButton();
+        if (hint != null) hint.setVisibility(View.GONE);
+
+        interactionButton.setVisibility(View.GONE);
         choicesBox.removeAllViews();
         nextMissionButton.setVisibility(View.GONE);
 
         commandBar.setVisibility(View.VISIBLE);
-        commandInput.setVisibility(View.VISIBLE);
-        executeButton.setVisibility(View.VISIBLE);
+        interactionLabel.setText("MODE : terminal libre simulé");
 
-        modeView.setText("MODE : terminal libre");
         scoreView.setText(
             "Lab XP : " + labPoints +
-            "   •   environnement libre"
+            "  •  Ubuntu virtuel"
         );
 
-        appendTerminal("");
-        appendTerminal("[mode libre] Tape help pour afficher les commandes disponibles.");
-
-        styleLabModeButtons();
+        appendSystem("[terminal libre] Tape help pour la liste des commandes.");
+        updateCommandPrompt();
         refreshTerminal();
-        scrollTerminalToBottom();
-    }
-
-    private void styleLabModeButtons() {
-        if (guidedMode) {
-            guidedModeButton.setBackground(rounded(Color.rgb(226,83,45), 12, 0));
-            guidedModeButton.setTextColor(Color.WHITE);
-
-            freeModeButton.setBackground(rounded(Color.rgb(232,232,236), 12, 0));
-            freeModeButton.setTextColor(Color.rgb(45,45,49));
-        } else {
-            freeModeButton.setBackground(rounded(Color.rgb(226,83,45), 12, 0));
-            freeModeButton.setTextColor(Color.WHITE);
-
-            guidedModeButton.setBackground(rounded(Color.rgb(232,232,236), 12, 0));
-            guidedModeButton.setTextColor(Color.rgb(45,45,49));
-        }
+        scrollBottom();
     }
 
     private void renderInteraction() {
-        if (!guidedMode) {
-            choicesBox.removeAllViews();
+        choicesBox.removeAllViews();
+
+        if (realEnvironment || !guidedMode) {
             commandBar.setVisibility(View.VISIBLE);
-            commandInput.setVisibility(View.VISIBLE);
-            executeButton.setVisibility(View.VISIBLE);
-            modeView.setText("MODE : terminal libre");
             return;
         }
 
-        hintButton.setVisibility(View.VISIBLE);
-        interactionModeButton.setVisibility(View.VISIBLE);
-
-        choicesBox.removeAllViews();
-
         if (typingMode) {
-            modeView.setText("MISSION : commande à écrire");
+            interactionLabel.setText("MISSION : écris la commande");
             commandBar.setVisibility(View.VISIBLE);
-            commandInput.setVisibility(View.VISIBLE);
-            executeButton.setVisibility(View.VISIBLE);
         } else {
-            modeView.setText("MISSION : 4 propositions");
+            interactionLabel.setText("MISSION : 4 propositions");
             commandInput.clearFocus();
             commandBar.setVisibility(View.GONE);
 
             Scenario scenario = scenarios.get(scenarioIndex);
-            List<String> shuffled = new ArrayList<>(Arrays.asList(scenario.choices));
+            List<String> shuffled = new ArrayList<>(
+                Arrays.asList(scenario.choices)
+            );
             Collections.shuffle(shuffled);
 
             for (String choice : shuffled) {
@@ -700,662 +1065,753 @@ public class SimulatorActivity extends Activity {
         }
     }
 
-    private void executeTyped() {
+    private void executeInput() {
         String command = commandInput.getText().toString().trim();
+
         if (command.isEmpty()) return;
 
         commandInput.setText("");
-        runCommand(command);
-        commandInput.requestFocus();
+        inputHistory.add(command);
+        historyCursor = inputHistory.size();
 
-        contentScroll.postDelayed(this::scrollTerminalToBottom, 120);
+        runCommand(command);
+
+        commandInput.requestFocus();
+        scroll.postDelayed(this::scrollBottom, 100);
     }
 
     private void runCommand(String command) {
-        if (command.trim().isEmpty()) return;
+        if (command == null || command.trim().isEmpty()) return;
 
-        appendTerminal("ubuntu@academy:" + shortCwd() + "$ " + command);
-        commandHistory.add(command);
+        appendPrompt(command);
 
-        String output = executeSimulated(command);
-        if (!output.isEmpty()) appendTerminal(output);
+        if (realEnvironment) {
+            if (isDangerousRealCommand(command)) {
+                confirmDangerousRealCommand(command);
+            } else {
+                runRealCommandAsync(command);
+            }
+            return;
+        }
+
+        VirtualMachine.Result result = vm.execute(command);
+        renderVirtualResult(command, result);
 
         if (guidedMode) {
             evaluateMission(command);
         }
 
+        updateCommandPrompt();
         refreshTerminal();
-        scrollTerminalToBottom();
+        scrollBottom();
+    }
+
+    private void renderVirtualResult(
+        String command,
+        VirtualMachine.Result result
+    ) {
+        if (result.kind == VirtualMachine.Kind.CLEAR) {
+            terminal.clear();
+            return;
+        }
+
+        if (result.kind == VirtualMachine.Kind.EDIT) {
+            showNanoEditor(result.editPath);
+            return;
+        }
+
+        if (result.kind == VirtualMachine.Kind.LS) {
+            if (!result.text.isEmpty()) {
+                appendPlain(result.text, TERMINAL_TEXT);
+                if (!result.text.endsWith("\n")) appendRaw("\n");
+            }
+
+            boolean longFormat = command.contains("-l");
+
+            for (int i = 0; i < result.entries.size(); i++) {
+                VirtualMachine.FsEntry entry = result.entries.get(i);
+
+                if (longFormat) {
+                    appendPlain(
+                        entry.directory ? "drwxr-xr-x  " : "-rw-r--r--  ",
+                        TERMINAL_MUTED
+                    );
+                }
+
+                appendPlain(
+                    entry.name,
+                    entry.directory ? DIRECTORY_BLUE : TERMINAL_TEXT
+                );
+
+                if (longFormat) {
+                    appendRaw("\n");
+                } else if (i < result.entries.size() - 1) {
+                    appendRaw("  ");
+                }
+            }
+
+            if (!result.entries.isEmpty() && !longFormat) appendRaw("\n");
+            return;
+        }
+
+        if (result.text.isEmpty()) return;
+
+        if (result.kind == VirtualMachine.Kind.ERROR) {
+            appendPlain(result.text + "\n", ERROR_RED);
+        } else if (result.kind == VirtualMachine.Kind.SUCCESS) {
+            appendPlain(result.text + "\n", SUCCESS_GREEN);
+        } else {
+            appendPlain(result.text + "\n", TERMINAL_TEXT);
+        }
     }
 
     private void evaluateMission(String command) {
         Scenario scenario = scenarios.get(scenarioIndex);
         String normalized = normalize(command);
 
-        boolean success = false;
+        boolean correct = false;
+
         for (String accepted : scenario.accepted) {
             if (normalized.equals(normalize(accepted))) {
-                success = true;
+                correct = true;
                 break;
             }
         }
 
-        if (success) {
-            appendTerminal("✓ Objectif réussi : +150 Lab XP");
-
-            labPoints += 150;
-
-            prefs.edit()
-                .putInt("labPoints", labPoints)
-                .putInt("totalPoints", prefs.getInt("totalPoints", 0) + 150)
-                .apply();
-
-            scoreView.setText(
-                "Lab XP : " + labPoints + "   •   Mission réussie"
+        if (!correct) {
+            appendPlain(
+                "↳ La commande a été exécutée, mais elle ne valide pas encore l'objectif.\n",
+                Color.rgb(236,184,91)
             );
-
-            scenarioIndex = (scenarioIndex + 1) % scenarios.size();
-
-            objectiveView.postDelayed(this::showScenario, 450);
-        } else {
-            appendTerminal(
-                "↳ La commande a été simulée, mais elle ne valide pas encore l'objectif."
-            );
+            refreshTerminal();
+            return;
         }
+
+        labPoints += 150;
+
+        prefs.edit()
+            .putInt("labPoints", labPoints)
+            .putInt(
+                "totalPoints",
+                prefs.getInt("totalPoints", 0) + 150
+            )
+            .apply();
+
+        appendPlain("✓ Objectif réussi : +150 Lab XP\n", SUCCESS_GREEN);
+
+        scenarioIndex = (scenarioIndex + 1) % scenarios.size();
+
+        scoreView.setText(
+            "Lab XP : " + labPoints + "  •  Mission réussie"
+        );
+
+        objectiveView.postDelayed(this::showScenario, 550);
     }
 
-    private String executeSimulated(String raw) {
-        String command = raw.trim();
+    private void runRealCommandAsync(String command) {
+        if (!tokenStore.hasToken() &&
+            needsNetworkCredentials(command)) {
 
-        if (command.isEmpty()) return "";
-
-        if (command.contains("&&")) {
-            StringBuilder combined = new StringBuilder();
-            String[] parts = command.split("&&");
-
-            for (String part : parts) {
-                String out = executeSimulated(part.trim());
-                if (!out.isEmpty()) {
-                    if (combined.length() > 0) combined.append("\n");
-                    combined.append(out);
-                }
-            }
-            return combined.toString();
+            appendPlain(
+                "GitHub réel : connecte d'abord ton compte avec « Connexion GitHub ».\n",
+                ERROR_RED
+            );
+            refreshTerminal();
+            return;
         }
 
+        appendPlain("[réel] exécution…\n", Color.rgb(238,176,96));
+        refreshTerminal();
+
+        executor.submit(() -> {
+            try {
+                String output = realGit.execute(command);
+
+                runOnUiThread(() -> {
+                    if (!output.isEmpty()) {
+                        int color =
+                            output.startsWith("fatal") ||
+                            output.startsWith("error") ||
+                            output.contains("non encore prise en charge")
+                                ? ERROR_RED
+                                : TERMINAL_TEXT;
+
+                        appendPlain(output + "\n", color);
+                    }
+
+                    updateCommandPrompt();
+                    refreshTerminal();
+                    refreshRealStatusTextOnly();
+                    scrollBottom();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Erreur Git réelle : " + safeMessage(e) + "\n",
+                        ERROR_RED
+                    );
+                    refreshTerminal();
+                    scrollBottom();
+                });
+            }
+        });
+    }
+
+    private boolean needsNetworkCredentials(String command) {
         String n = normalize(command);
 
-        if ("help".equals(n)) {
-            return
-                "Commandes simulées :\n" +
-                "pwd, ls, ls -l, ls -la, cd, mkdir, mkdir -p, touch, cat, echo, cp, mv, rm, rmdir, clear, history\n" +
-                "whoami, hostname, uname, uname -a, date, id\n" +
-                "git --version, git init, git status, git add, git commit -m, git log, git diff, git branch, git switch -c\n" +
-                "git remote -v, git remote add origin, git remote set-url origin, git fetch, git pull --rebase, git push\n" +
-                "ssh-keygen -t ed25519, ssh -T git@github.com\n\n" +
-                "Le simulateur n'exécute jamais de commande réelle sur Android.";
-        }
+        return n.startsWith("git clone ") ||
+            n.startsWith("git fetch") ||
+            n.startsWith("git pull") ||
+            n.startsWith("git push") ||
+            n.startsWith("git ls-remote");
+    }
 
-        if ("clear".equals(n)) {
-            history.clear();
-            return "";
-        }
+    private boolean isDangerousRealCommand(String command) {
+        String n = normalize(command);
 
-        if ("history".equals(n)) {
-            StringBuilder builder = new StringBuilder();
+        return n.startsWith("git push --force-with-lease") ||
+            n.startsWith("git push origin --delete ");
+    }
 
-            for (int i = 0; i < commandHistory.size(); i++) {
-                builder.append(i + 1)
-                    .append("  ")
-                    .append(commandHistory.get(i))
-                    .append("\n");
-            }
-            return builder.toString().trim();
-        }
+    private void confirmDangerousRealCommand(String command) {
+        String repo = realGit.selectedRepositoryName();
+        if (repo.isEmpty()) repo = "(dépôt non identifié)";
 
-        if ("whoami".equals(n)) return "ubuntu";
-        if ("hostname".equals(n)) return "academy";
-        if ("id".equals(n)) return "uid=1000(ubuntu) gid=1000(ubuntu) groupes=1000(ubuntu)";
-        if ("uname".equals(n)) return "Linux";
-        if ("uname -a".equals(n)) {
-            return "Linux academy 6.8.0-sim #1 SMP PREEMPT_DYNAMIC aarch64 GNU/Linux";
-        }
-        if ("date".equals(n)) {
-            return new SimpleDateFormat(
-                "EEE dd MMM yyyy HH:mm:ss",
-                Locale.FRANCE
-            ).format(new Date());
-        }
+        final String target = repo;
 
-        if ("pwd".equals(n)) return cwd;
+        new AlertDialog.Builder(this)
+            .setTitle("Confirmer l'opération distante")
+            .setMessage(
+                "Environnement : GITHUB RÉEL\n" +
+                "origin = " + target + "\n\n" +
+                command + "\n\n" +
+                "Cette opération peut modifier ou supprimer l'historique distant."
+            )
+            .setNegativeButton("Annuler", (d, w) -> {
+                appendPlain("[annulé] " + command + "\n", TERMINAL_MUTED);
+                refreshTerminal();
+            })
+            .setPositiveButton(
+                "Je confirme",
+                (d, w) -> runRealCommandAsync(command)
+            )
+            .show();
+    }
 
-        if ("ls".equals(n)) return listBasic(false);
-        if ("ls -l".equals(n)) return listLong(false);
-        if ("ls -la".equals(n) || "ls -al".equals(n)) return listLong(true);
+    private void showNanoEditor(String path) {
+        EditText editor = new EditText(this);
+        editor.setMinLines(10);
+        editor.setGravity(Gravity.TOP | Gravity.START);
+        editor.setTypeface(Typeface.MONOSPACE);
+        editor.setTextSize(13f);
+        editor.setInputType(
+            InputType.TYPE_CLASS_TEXT |
+            InputType.TYPE_TEXT_FLAG_MULTI_LINE |
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        );
+        editor.setText(vm.readFileForEditor(path));
+        editor.setSelection(editor.getText().length());
+        editor.setPadding(dp(14), dp(12), dp(14), dp(12));
 
-        if ("cd".equals(n) || "cd ~".equals(n)) {
-            cwd = "/home/ubuntu";
-            return "";
-        }
+        new AlertDialog.Builder(this)
+            .setTitle("GNU nano — " + path)
+            .setView(editor)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Enregistrer", (dialog, which) -> {
+                vm.saveEditedFile(path, editor.getText().toString());
+                appendPlain("[nano] fichier enregistré\n", SUCCESS_GREEN);
+                updateCommandPrompt();
+                refreshTerminal();
+                commandInput.requestFocus();
+            })
+            .show();
+    }
 
-        if ("cd ..".equals(n)) {
-            if (!"/".equals(cwd)) {
-                int cut = cwd.lastIndexOf('/');
-                cwd = cut <= 0 ? "/" : cwd.substring(0, cut);
-            }
-            return "";
-        }
+    private void showTokenDialog() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(6), dp(20), 0);
 
-        if (n.startsWith("cd ")) {
-            String target = command.substring(3).trim();
+        TextView info = terminalText(
+            "Utilise un jeton GitHub à permissions fines. " +
+            "Le jeton est chiffré par Android Keystore et n'est jamais enregistré dans le code source.\n\n" +
+            "Pour pull : Contents en lecture. Pour push : Contents en lecture/écriture.",
+            12,
+            false,
+            Color.rgb(45,45,49)
+        );
+        box.addView(info);
 
-            if (target.startsWith("/")) {
-                if (dirs.contains(target) || "/home/ubuntu".equals(target)) {
-                    cwd = target;
-                    return "";
-                }
-            }
+        EditText token = new EditText(this);
+        token.setHint("github_pat_…");
+        token.setSingleLine(true);
+        token.setInputType(
+            InputType.TYPE_CLASS_TEXT |
+            InputType.TYPE_TEXT_VARIATION_PASSWORD
+        );
+        box.addView(token);
 
-            if (dirs.contains(target) || dirs.contains(cwd + "/" + target)) {
-                cwd = target.startsWith("/")
-                    ? target
-                    : ("/".equals(cwd) ? "" : cwd) + "/" + target;
-                return "";
-            }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Connexion GitHub réelle")
+            .setView(box)
+            .setNegativeButton("Annuler", null)
+            .setNeutralButton("Créer un token", null)
+            .setPositiveButton("Valider", null)
+            .create();
 
-            return "bash: cd: " + target + ": Aucun fichier ou dossier de ce type";
-        }
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                .setOnClickListener(v -> {
+                    Intent browser = new Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://github.com/settings/personal-access-tokens/new")
+                    );
+                    startActivity(browser);
+                });
 
-        if (n.startsWith("mkdir -p ")) {
-            String path = command.substring(
-                command.toLowerCase(Locale.ROOT).indexOf("-p") + 2
-            ).trim();
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    String value = token.getText().toString().trim();
 
-            createDirectoryTree(path);
-            return "";
-        }
-
-        if (n.startsWith("mkdir ")) {
-            String target = command.substring(6).trim();
-            dirs.add(target);
-            return "";
-        }
-
-        if (n.startsWith("touch ")) {
-            String target = command.substring(6).trim();
-            files.add(target);
-            contents.putIfAbsent(target, "");
-            return "";
-        }
-
-        if (n.startsWith("cat ")) {
-            String file = command.substring(4).trim();
-
-            if ("~/.ssh/id_ed25519.pub".equals(file)) {
-                return sshKey
-                    ? "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... email"
-                    : "cat: /home/ubuntu/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type";
-            }
-
-            return files.contains(file)
-                ? contents.getOrDefault(file, "")
-                : "cat: " + file + ": Aucun fichier ou dossier de ce type";
-        }
-
-        if (n.startsWith("echo ")) {
-            if (command.contains(">>") || command.contains(">")) {
-                boolean append = command.contains(">>");
-                String[] parts = command.split(append ? ">>" : ">", 2);
-
-                if (parts.length == 2) {
-                    String text = parts[0]
-                        .substring(4)
-                        .trim()
-                        .replaceAll("^\\\"|\\\"$", "");
-
-                    String file = parts[1].trim();
-
-                    files.add(file);
-
-                    if (append) {
-                        String old = contents.getOrDefault(file, "");
-                        contents.put(
-                            file,
-                            old + (old.isEmpty() ? "" : "\n") + text
-                        );
-                    } else {
-                        contents.put(file, text);
+                    if (value.isEmpty()) {
+                        token.setError("Jeton requis");
+                        return;
                     }
-                    return "";
-                }
-            }
 
-            return command.substring(5)
-                .trim()
-                .replaceAll("^\\\"|\\\"$", "");
-        }
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                    validateAndStoreToken(value, dialog);
+                });
+        });
 
-        if (n.startsWith("cp -r ")) {
-            String[] args = command.substring(6).trim().split("\\s+");
-
-            if (args.length >= 2) {
-                dirs.add(args[1]);
-                return "";
-            }
-
-            return "cp: opérande de fichier manquant";
-        }
-
-        if (n.startsWith("cp ")) {
-            String[] args = command.substring(3).trim().split("\\s+");
-
-            if (args.length >= 2) {
-                String src = args[0];
-                String dst = args[1];
-
-                if (!files.contains(src)) {
-                    return "cp: impossible d'évaluer '" + src + "': Aucun fichier";
-                }
-
-                files.add(dst);
-                contents.put(dst, contents.getOrDefault(src, ""));
-                return "";
-            }
-
-            return "cp: opérande de fichier manquant";
-        }
-
-        if (n.startsWith("mv ")) {
-            String[] args = command.substring(3).trim().split("\\s+");
-
-            if (args.length >= 2) {
-                String src = args[0];
-                String dst = args[1];
-
-                if (files.remove(src)) {
-                    String content = contents.remove(src);
-                    files.add(dst);
-                    contents.put(dst, content == null ? "" : content);
-                    return "";
-                }
-
-                if (dirs.remove(src)) {
-                    dirs.add(dst);
-                    return "";
-                }
-
-                return "mv: impossible d'évaluer '" + src + "': Aucun fichier";
-            }
-
-            return "mv: opérande de fichier manquant";
-        }
-
-        if (n.startsWith("rm -r ") || n.startsWith("rm -rf ")) {
-            String target = command.substring(
-                command.toLowerCase(Locale.ROOT).startsWith("rm -rf ") ? 7 : 6
-            ).trim();
-
-            dirs.remove(target);
-            files.remove(target);
-            contents.remove(target);
-            return "";
-        }
-
-        if (n.startsWith("rm ")) {
-            String target = command.substring(3).trim();
-
-            if (files.remove(target)) {
-                contents.remove(target);
-                return "";
-            }
-
-            return "rm: impossible de supprimer '" + target + "': Aucun fichier";
-        }
-
-        if (n.startsWith("rmdir ")) {
-            String target = command.substring(6).trim();
-
-            if (dirs.remove(target)) return "";
-
-            return "rmdir: échec de suppression de '" + target + "'";
-        }
-
-        if (n.startsWith("nano ")) {
-            String target = command.substring(5).trim();
-            files.add(target);
-            contents.putIfAbsent(target, "");
-
-            return
-                "GNU nano (simulation) : '" + target + "' est prêt.\n" +
-                "L'éditeur plein écran n'est pas reproduit ; utilise echo pour modifier son contenu.";
-        }
-
-        if ("git --version".equals(n)) {
-            return "git version 2.43.0";
-        }
-
-        if ("git init".equals(n)) {
-            gitInit = true;
-            return "Dépôt Git vide initialisé dans " + cwd + "/.git/";
-        }
-
-        if ("git status".equals(n)) {
-            if (!gitInit) return "fatal: not a git repository";
-
-            if (staged) {
-                return
-                    "On branch " + branch + "\n" +
-                    "Changes to be committed:\n" +
-                    "  modified: README.md";
-            }
-
-            return
-                "On branch " + branch + "\n" +
-                "working tree simulé";
-        }
-
-        if (n.startsWith("git add ")) {
-            if (!gitInit) return "fatal: not a git repository";
-
-            staged = true;
-            return "";
-        }
-
-        if (n.startsWith("git commit -m ")) {
-            if (!gitInit) return "fatal: not a git repository";
-            if (!staged) return "nothing added to commit";
-
-            committed = true;
-            staged = false;
-
-            String message = command
-                .substring(command.toLowerCase(Locale.ROOT).indexOf("-m") + 2)
-                .trim()
-                .replace("\"", "");
-
-            return "[" + branch + " a1b2c3d] " + message;
-        }
-
-        if ("git log".equals(n) || "git log -p".equals(n)) {
-            return committed
-                ? "commit a1b2c3d\nAuthor: ubuntu <ubuntu@academy>\n\n    Commit simulé"
-                : "fatal: your current branch has no commits yet";
-        }
-
-        if ("git diff".equals(n)) {
-            return "- ancienne ligne\n+ nouvelle ligne";
-        }
-
-        if ("git diff --staged".equals(n)) {
-            return staged
-                ? "- ancienne version\n+ version staged"
-                : "";
-        }
-
-        if ("git branch".equals(n)) {
-            return "* " + branch;
-        }
-
-        if (n.startsWith("git branch -d ")) {
-            String target = command.substring("git branch -d ".length()).trim();
-
-            if (target.equals(branch)) {
-                return "error: Cannot delete branch '" + target + "' checked out";
-            }
-
-            return "Deleted branch " + target + " (was a1b2c3d).";
-        }
-
-        if (n.startsWith("git switch -c ")) {
-            branch = command.substring("git switch -c ".length()).trim();
-            return "Switched to a new branch '" + branch + "'";
-        }
-
-        if (n.startsWith("git switch ")) {
-            branch = command.substring("git switch ".length()).trim();
-            return "Switched to branch '" + branch + "'";
-        }
-
-        if ("git remote -v".equals(n)) {
-            return remoteOrigin.isEmpty()
-                ? ""
-                : "origin  " + remoteOrigin + " (fetch)\n" +
-                  "origin  " + remoteOrigin + " (push)";
-        }
-
-        if (n.startsWith("git remote add origin ")) {
-            remoteOrigin = command.substring(
-                "git remote add origin ".length()
-            ).trim();
-            return "";
-        }
-
-        if (n.startsWith("git remote set-url origin ")) {
-            remoteOrigin = command.substring(
-                "git remote set-url origin ".length()
-            ).trim();
-            return "";
-        }
-
-        if ("git fetch".equals(n) || "git fetch origin".equals(n)) {
-            if (remoteOrigin.isEmpty()) {
-                return "fatal: 'origin' does not appear to be a git repository";
-            }
-
-            return "From " + remoteOrigin + "\n * [new branch] main -> origin/main";
-        }
-
-        if ("git pull --rebase origin main".equals(n)) {
-            if (remoteOrigin.isEmpty()) {
-                return "fatal: 'origin' does not appear to be a git repository";
-            }
-
-            return
-                "From " + remoteOrigin + "\n" +
-                "Successfully rebased and updated refs/heads/" + branch + ".";
-        }
-
-        if (n.startsWith("git push -u origin ")) {
-            if (remoteOrigin.isEmpty()) {
-                return "fatal: 'origin' does not appear to be a git repository";
-            }
-
-            String pushedBranch = command.substring(
-                "git push -u origin ".length()
-            ).trim();
-
-            return
-                "branch '" + pushedBranch + "' set up to track 'origin/" +
-                pushedBranch + "'.\nEverything up-to-date (simulation)";
-        }
-
-        if (n.startsWith("git push origin --delete ")) {
-            if (remoteOrigin.isEmpty()) {
-                return "fatal: 'origin' does not appear to be a git repository";
-            }
-
-            String deleted = command.substring(
-                "git push origin --delete ".length()
-            ).trim();
-
-            return "- [deleted] " + deleted;
-        }
-
-        if (n.startsWith("git push origin ")) {
-            if (remoteOrigin.isEmpty()) {
-                return "fatal: 'origin' does not appear to be a git repository";
-            }
-
-            String pushed = command.substring(
-                "git push origin ".length()
-            ).trim();
-
-            return "[new branch] " + pushed + " -> " + pushed;
-        }
-
-        if ("git push".equals(n)) {
-            return remoteOrigin.isEmpty()
-                ? "fatal: aucun remote configuré"
-                : "Everything up-to-date (simulation)";
-        }
-
-        if (n.startsWith("ssh-keygen -t ed25519")) {
-            sshKey = true;
-
-            return
-                "Your identification has been saved in /home/ubuntu/.ssh/id_ed25519\n" +
-                "Your public key has been saved in /home/ubuntu/.ssh/id_ed25519.pub";
-        }
-
-        if ("ssh -t git@github.com".equals(n)) {
-            return sshKey
-                ? "Hi USER! You've successfully authenticated, but GitHub does not provide shell access."
-                : "Permission denied (publickey).";
-        }
-
-        if (n.startsWith("sudo ")) {
-            return
-                "sudo: non disponible dans ce terminal simulé.\n" +
-                "Aucune commande système réelle n'est exécutée sur Android.";
-        }
-
-        String firstWord = command.split("\\s+")[0];
-
-        return
-            firstWord + ": commande introuvable dans ce simulateur.\n" +
-            "Tape help pour voir les commandes disponibles.";
+        dialog.show();
     }
 
-    private void createDirectoryTree(String path) {
-        dirs.add(path);
+    private void validateAndStoreToken(String token, AlertDialog dialog) {
+        realStatusView.setText("Vérification du compte GitHub…");
 
-        String[] parts = path.split("/");
-        String accumulator = "";
+        executor.submit(() -> {
+            try {
+                GitHubApiClient api = new GitHubApiClient(token);
+                String login = api.getLogin();
 
-        for (String part : parts) {
-            if (part.isEmpty()) continue;
+                tokenStore.saveToken(token);
+                prefs.edit().putString("realGitHubLogin", login).apply();
 
-            accumulator = accumulator.isEmpty()
-                ? part
-                : accumulator + "/" + part;
+                runOnUiThread(() -> {
+                    dialog.dismiss();
+                    appendPlain(
+                        "[GitHub réel] connecté en tant que @" + login + "\n",
+                        SUCCESS_GREEN
+                    );
+                    refreshTerminal();
+                    refreshRealStatusTextOnly();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                    realStatusView.setText("Connexion GitHub non validée.");
+                    appendPlain(
+                        "Connexion GitHub échouée : " + safeMessage(e) + "\n",
+                        ERROR_RED
+                    );
+                    refreshTerminal();
+                });
+            }
+        });
+    }
 
-            dirs.add(accumulator);
+    private void chooseRepository() {
+        String token = tokenStore.loadToken();
+
+        if (token.isEmpty()) {
+            showTokenDialog();
+            return;
+        }
+
+        realStatusView.setText("Chargement des dépôts GitHub…");
+
+        executor.submit(() -> {
+            try {
+                GitHubApiClient api = new GitHubApiClient(token);
+                List<GitHubApiClient.RepoInfo> repos = api.listRepositories();
+
+                runOnUiThread(() -> showRepositoryPicker(repos));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    realStatusView.setText("Impossible de charger les dépôts.");
+                    appendPlain(
+                        "GitHub : " + safeMessage(e) + "\n",
+                        ERROR_RED
+                    );
+                    refreshTerminal();
+                });
+            }
+        });
+    }
+
+    private void showRepositoryPicker(List<GitHubApiClient.RepoInfo> repos) {
+        if (repos.isEmpty()) {
+            realStatusView.setText("Aucun dépôt accessible avec ce jeton.");
+            return;
+        }
+
+        String[] labels = new String[repos.size()];
+
+        for (int i = 0; i < repos.size(); i++) {
+            labels[i] = repos.get(i).toString();
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle("Choisir un dépôt GitHub")
+            .setItems(labels, (dialog, which) -> {
+                GitHubApiClient.RepoInfo selected = repos.get(which);
+
+                realGit.selectRepository(
+                    selected.fullName,
+                    selected.cloneUrl,
+                    selected.defaultBranch
+                );
+
+                appendPlain(
+                    "[GitHub réel] origin = " + selected.fullName + "\n",
+                    SUCCESS_GREEN
+                );
+
+                refreshRealStatusTextOnly();
+                refreshTerminal();
+
+                new AlertDialog.Builder(this)
+                    .setTitle("Cloner ce dépôt ?")
+                    .setMessage(
+                        selected.fullName +
+                        "\n\nLe clone sera placé uniquement dans l'espace privé de l'application."
+                    )
+                    .setNegativeButton("Plus tard", null)
+                    .setPositiveButton(
+                        "Cloner maintenant",
+                        (d, w) -> cloneSelectedRepository(false)
+                    )
+                    .show();
+            })
+            .show();
+    }
+
+    private void cloneSelectedRepository(boolean replaceExisting) {
+        if (realGit.selectedRepositoryUrl().isEmpty()) {
+            appendPlain(
+                "Choisis d'abord un dépôt GitHub.\n",
+                ERROR_RED
+            );
+            refreshTerminal();
+            chooseRepository();
+            return;
+        }
+
+        appendPlain(
+            "[réel] clonage de " + realGit.selectedRepositoryName() + "…\n",
+            Color.rgb(238,176,96)
+        );
+        refreshTerminal();
+
+        executor.submit(() -> {
+            try {
+                String result = realGit.cloneSelectedRepository(replaceExisting);
+
+                runOnUiThread(() -> {
+                    appendPlain(result + "\n", SUCCESS_GREEN);
+                    updateCommandPrompt();
+                    refreshRealStatusTextOnly();
+                    refreshTerminal();
+                    scrollBottom();
+                });
+            } catch (Exception e) {
+                String message = safeMessage(e);
+
+                runOnUiThread(() -> {
+                    if (message.contains("Un autre dépôt existe déjà") && !replaceExisting) {
+                        confirmReplaceLocalRepo();
+                    } else {
+                        appendPlain(
+                            "Clonage échoué : " + message + "\n",
+                            ERROR_RED
+                        );
+                        refreshTerminal();
+                    }
+                });
+            }
+        });
+    }
+
+    private void confirmReplaceLocalRepo() {
+        new AlertDialog.Builder(this)
+            .setTitle("Remplacer le dépôt local ?")
+            .setMessage(
+                "L'espace Git réel privé contient un autre dépôt. " +
+                "Le remplacer supprimera uniquement cette copie interne à l'application, pas le dépôt GitHub."
+            )
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton(
+                "Remplacer",
+                (d, w) -> cloneSelectedRepository(true)
+            )
+            .show();
+    }
+
+    private void disconnectGitHub() {
+        new AlertDialog.Builder(this)
+            .setTitle("Se déconnecter de GitHub")
+            .setMessage(
+                "Le jeton chiffré sera supprimé du téléphone. " +
+                "La copie locale du dépôt restera dans l'espace privé de l'application."
+            )
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Déconnecter", (d, w) -> {
+                tokenStore.clearToken();
+                prefs.edit().remove("realGitHubLogin").apply();
+
+                appendPlain(
+                    "[GitHub réel] jeton supprimé du stockage sécurisé.\n",
+                    SUCCESS_GREEN
+                );
+
+                refreshRealStatusTextOnly();
+                refreshTerminal();
+            })
+            .show();
+    }
+
+    private void refreshRealStatus() {
+        refreshRealStatusTextOnly();
+
+        if (!tokenStore.hasToken()) return;
+
+        executor.submit(() -> {
+            try {
+                String login = new GitHubApiClient(tokenStore.loadToken()).getLogin();
+                prefs.edit().putString("realGitHubLogin", login).apply();
+
+                runOnUiThread(this::refreshRealStatusTextOnly);
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    private void refreshRealStatusTextOnly() {
+        if (realStatusView == null) return;
+
+        String login = prefs.getString("realGitHubLogin", "");
+        String repo = realGit.selectedRepositoryName();
+        String branch = realGit.currentBranch();
+
+        StringBuilder text = new StringBuilder();
+
+        text.append(tokenStore.hasToken()
+            ? "Compte : @" + (login.isEmpty() ? "connecté" : login)
+            : "Compte : non connecté");
+
+        text.append("\norigin : ")
+            .append(repo.isEmpty() ? "aucun dépôt sélectionné" : repo);
+
+        if (!branch.isEmpty()) {
+            text.append("\nbranche locale : ").append(branch);
+        }
+
+        text.append("\nmode réseau : HTTPS/JGit");
+
+        realStatusView.setText(text.toString());
+        scoreView.setText(
+            "GITHUB RÉEL  •  " +
+            (repo.isEmpty() ? "aucun origin" : repo)
+        );
+    }
+
+    private void confirmReset() {
+        if (realEnvironment) {
+            new AlertDialog.Builder(this)
+                .setTitle("Reset VM")
+                .setMessage(
+                    "Le bouton Reset VM ne supprime pas le dépôt GitHub réel. " +
+                    "Repasse en SIMULATION pour réinitialiser la machine virtuelle."
+                )
+                .setPositiveButton("OK", null)
+                .show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle("Réinitialiser la simulation")
+            .setMessage(
+                "Tous les fichiers, commits et états Git simulés seront remis à zéro."
+            )
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Réinitialiser", (d, w) -> {
+                vm.reset();
+                terminal.clear();
+                appendSystem("[SIMULATION] Machine virtuelle réinitialisée.");
+
+                if (guidedMode) showScenario();
+                else showFreeSimulation();
+
+                updateCommandPrompt();
+                refreshTerminal();
+            })
+            .show();
+    }
+
+    private void historyPrevious() {
+        if (inputHistory.isEmpty()) return;
+
+        historyCursor = Math.max(0, historyCursor - 1);
+        commandInput.setText(inputHistory.get(historyCursor));
+        commandInput.setSelection(commandInput.getText().length());
+    }
+
+    private void historyNext() {
+        if (inputHistory.isEmpty()) return;
+
+        historyCursor = Math.min(inputHistory.size(), historyCursor + 1);
+
+        if (historyCursor >= inputHistory.size()) {
+            commandInput.setText("");
+        } else {
+            commandInput.setText(inputHistory.get(historyCursor));
+            commandInput.setSelection(commandInput.getText().length());
         }
     }
 
-    private String listBasic(boolean hidden) {
-        List<String> all = new ArrayList<>();
+    private void updateCommandPrompt() {
+        if (commandPromptView == null) return;
 
-        all.addAll(dirs);
-        all.addAll(files);
+        String userHost = realEnvironment
+            ? "github@academy"
+            : "ubuntu@academy";
 
-        Collections.sort(all);
+        String path = realEnvironment
+            ? realGit.displayPath()
+            : vm.shortCwd();
 
-        StringBuilder builder = new StringBuilder();
+        SpannableStringBuilder line = new SpannableStringBuilder();
 
-        if (hidden && gitInit) {
-            builder.append(".git  ");
-        }
+        appendSpan(line, userHost, realEnvironment ? REAL_RED : PROMPT_GREEN, true);
+        appendSpan(line, ":", TERMINAL_TEXT, false);
+        appendSpan(line, path, PATH_BLUE, true);
+        appendSpan(line, "$", TERMINAL_TEXT, false);
 
-        for (String item : all) {
-            if (item.startsWith("/")) continue;
-
-            builder.append(item).append("  ");
-        }
-
-        return builder.toString().trim();
+        commandPromptView.setText(line);
     }
 
-    private String listLong(boolean hidden) {
-        StringBuilder builder = new StringBuilder();
+    private void appendPrompt(String command) {
+        String userHost = realEnvironment
+            ? "github@academy"
+            : "ubuntu@academy";
 
-        if (hidden) {
-            builder.append("drwxr-xr-x  .\n");
-            builder.append("drwxr-xr-x  ..\n");
-        }
+        String path = realEnvironment
+            ? realGit.displayPath()
+            : vm.shortCwd();
 
-        if (hidden && gitInit) {
-            builder.append("drwxr-xr-x  .git\n");
-        }
-
-        List<String> sortedDirs = new ArrayList<>(dirs);
-        Collections.sort(sortedDirs);
-
-        for (String dir : sortedDirs) {
-            if (!dir.startsWith("/")) {
-                builder.append("drwxr-xr-x  ")
-                    .append(dir)
-                    .append("\n");
-            }
-        }
-
-        List<String> sortedFiles = new ArrayList<>(files);
-        Collections.sort(sortedFiles);
-
-        for (String file : sortedFiles) {
-            builder.append("-rw-r--r--  ")
-                .append(file)
-                .append("\n");
-        }
-
-        return builder.toString().trim();
+        appendStyled(
+            userHost,
+            realEnvironment ? REAL_RED : PROMPT_GREEN,
+            true
+        );
+        appendStyled(":", TERMINAL_TEXT, false);
+        appendStyled(path, PATH_BLUE, true);
+        appendStyled("$ ", TERMINAL_TEXT, false);
+        appendStyled(command, TERMINAL_TEXT, false);
+        appendRaw("\n");
     }
 
-    private String normalize(String value) {
-        return value
-            .trim()
-            .replaceAll("\\s+", " ")
-            .toLowerCase(Locale.ROOT);
+    private void appendSystem(String text) {
+        appendStyled(text + "\n", Color.rgb(207,171,199), false);
     }
 
-    private String shortCwd() {
-        if ("/home/ubuntu".equals(cwd)) return "~";
-
-        if (cwd.startsWith("/home/ubuntu")) {
-            return "~" + cwd.substring("/home/ubuntu".length());
-        }
-
-        return cwd;
+    private void appendPlain(String text, int color) {
+        appendStyled(text, color, false);
     }
 
-    private void appendTerminal(String line) {
-        if (!line.isEmpty()) {
-            history.add("__OUT__" + line);
-        }
+    private void appendRaw(String text) {
+        terminal.append(text);
+    }
 
-        if (terminalView != null) {
-            terminalView.setText(historyText());
+    private void appendStyled(String text, int color, boolean bold) {
+        int start = terminal.length();
+        terminal.append(text);
+        int end = terminal.length();
+
+        terminal.setSpan(
+            new ForegroundColorSpan(color),
+            start,
+            end,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        );
+
+        if (bold) {
+            terminal.setSpan(
+                new StyleSpan(Typeface.BOLD),
+                start,
+                end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
+        }
+    }
+
+    private void appendSpan(
+        SpannableStringBuilder target,
+        String text,
+        int color,
+        boolean bold
+    ) {
+        int start = target.length();
+        target.append(text);
+        int end = target.length();
+
+        target.setSpan(
+            new ForegroundColorSpan(color),
+            start,
+            end,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        );
+
+        if (bold) {
+            target.setSpan(
+                new StyleSpan(Typeface.BOLD),
+                start,
+                end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
         }
     }
 
     private void refreshTerminal() {
         if (terminalView != null) {
-            terminalView.setText(historyText());
+            terminalView.setText(terminal);
         }
     }
 
-    private String historyText() {
-        StringBuilder builder = new StringBuilder();
+    private void scrollBottom() {
+        if (scroll == null) return;
 
-        for (String line : history) {
-            if (line.startsWith("__OUT__")) {
-                builder.append(line.substring(7));
-            } else {
-                builder.append(line);
-            }
-
-            builder.append("\n");
-        }
-
-        return builder.toString();
+        scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
     }
 
-    private void scrollTerminalToBottom() {
-        if (contentScroll == null) return;
+    private boolean normalizeEquals(String a, String b) {
+        return normalize(a).equals(normalize(b));
+    }
 
-        contentScroll.post(() ->
-            contentScroll.fullScroll(View.FOCUS_DOWN)
-        );
+    private String normalize(String value) {
+        return value == null
+            ? ""
+            : value.trim()
+                .replaceAll("\\s+", " ")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String safeMessage(Exception e) {
+        String message = e.getMessage();
+        return message == null || message.trim().isEmpty()
+            ? e.getClass().getSimpleName()
+            : message;
     }
 
     private void protectFromSystemBars(View view) {
@@ -1367,16 +1823,32 @@ public class SimulatorActivity extends Activity {
         view.setFitsSystemWindows(false);
 
         view.setOnApplyWindowInsetsListener((v, insets) -> {
-            int left = insets.getSystemWindowInsetLeft();
-            int top = insets.getSystemWindowInsetTop();
-            int right = insets.getSystemWindowInsetRight();
-            int bottom = insets.getSystemWindowInsetBottom();
+            int left;
+            int top;
+            int right;
+            int bottom;
+
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars()
+                );
+
+                left = bars.left;
+                top = bars.top;
+                right = bars.right;
+                bottom = bars.bottom;
+            } else {
+                left = insets.getSystemWindowInsetLeft();
+                top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
 
             v.setPadding(
                 baseLeft + left,
-                baseTop + top + dp(8),
+                baseTop + top + dp(4),
                 baseRight + right,
-                baseBottom + bottom + dp(8)
+                baseBottom + bottom + dp(3)
             );
 
             return insets;
@@ -1388,99 +1860,105 @@ public class SimulatorActivity extends Activity {
     private LinearLayout panel(int color, int radius) {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(15), dp(14), dp(15), dp(14));
+        layout.setPadding(dp(11), dp(9), dp(11), dp(9));
         layout.setBackground(rounded(color, radius, 0));
         return layout;
     }
 
-    private TextView label(String text, int size, boolean bold, int color) {
+    private TextView terminalText(
+        String text,
+        int size,
+        boolean bold,
+        int color
+    ) {
         TextView view = new TextView(this);
-
         view.setText(text);
         view.setTextSize(size);
         view.setTextColor(color);
-
-        if (bold) {
-            view.setTypeface(view.getTypeface(), Typeface.BOLD);
-        }
-
+        view.setTypeface(
+            Typeface.MONOSPACE,
+            bold ? Typeface.BOLD : Typeface.NORMAL
+        );
         return view;
     }
 
     private Button accentButton(String text) {
         Button button = new Button(this);
-
         button.setText(text);
         button.setAllCaps(false);
+        button.setTextSize(11f);
         button.setTextColor(Color.WHITE);
-        button.setBackground(
-            rounded(Color.rgb(226,83,45), 14, 0)
-        );
-
+        button.setBackground(rounded(UBUNTU_ORANGE, 9, 0));
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(10), dp(7), dp(10), dp(7));
         return button;
     }
 
     private Button smallButton(String text) {
         Button button = new Button(this);
-
         button.setText(text);
         button.setAllCaps(false);
+        button.setTextSize(10.5f);
         button.setTextColor(Color.rgb(45,45,49));
-        button.setBackground(
-            rounded(Color.rgb(232,232,236), 12, 0)
-        );
+        button.setBackground(rounded(Color.rgb(232,232,236), 9, 0));
         button.setMinHeight(0);
         button.setMinimumHeight(0);
-        button.setPadding(dp(12), dp(7), dp(12), dp(7));
+        button.setPadding(dp(9), dp(6), dp(9), dp(6));
+        return button;
+    }
 
+    private Button compactButton(String text) {
+        Button button = smallButton(text);
+        button.setTextSize(14f);
+        button.setPadding(dp(7), dp(5), dp(7), dp(5));
         return button;
     }
 
     private Button smallFullButton(String text) {
         Button button = smallButton(text);
-
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+        button.setLayoutParams(
+            new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         );
-
-        params.topMargin = dp(7);
-        button.setLayoutParams(params);
-
         return button;
     }
 
     private Button choiceButton(String text) {
         Button button = new Button(this);
-
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextSize(14f);
+        button.setTextSize(11.5f);
         button.setTextColor(Color.WHITE);
         button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         button.setTypeface(Typeface.MONOSPACE);
         button.setBackground(
             rounded(
-                Color.rgb(50,50,56),
-                12,
-                Color.rgb(90,90,98)
+                TERMINAL_PANEL,
+                8,
+                Color.rgb(88,88,96)
             )
         );
+        button.setPadding(dp(11), dp(8), dp(11), dp(8));
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-
-        params.bottomMargin = dp(7);
+        params.bottomMargin = dp(5);
         button.setLayoutParams(params);
 
         return button;
     }
 
-    private GradientDrawable rounded(int fill, int radiusDp, int stroke) {
+    private GradientDrawable rounded(
+        int fill,
+        int radiusDp,
+        int stroke
+    ) {
         GradientDrawable drawable = new GradientDrawable();
-
         drawable.setColor(fill);
         drawable.setCornerRadius(dp(radiusDp));
 
@@ -1491,12 +1969,11 @@ public class SimulatorActivity extends Activity {
         return drawable;
     }
 
-    private LinearLayout.LayoutParams marginTop(int top) {
+    private LinearLayout.LayoutParams topMargin(int top) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-
         params.topMargin = dp(top);
         return params;
     }
