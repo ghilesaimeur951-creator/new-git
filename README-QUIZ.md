@@ -26,6 +26,8 @@ Il propose des objectifs guidés comme :
 - synchroniser avec `git pull --rebase origin main`
 - créer une branche avec `git switch -c`
 - inspecter les changements avec `git diff`
+- inspecter le staging avec `git diff --staged`
+- terminer une résolution de conflit avec `git add README.md`
 
 Chaque mission peut être réalisée de deux façons :
 
@@ -46,6 +48,7 @@ Le simulateur maintient un petit état virtuel : dossier courant, fichiers, dép
 ### Progression
 
 - objectif quotidien de 10 questions
+- série quotidienne de révision
 - XP global
 - Lab XP dans le simulateur
 - précision globale
@@ -54,6 +57,7 @@ Le simulateur maintient un petit état virtuel : dossier courant, fichiers, dép
 - scores par niveau
 - badges
 - export texte de la progression
+- bibliothèque de commandes avec recherche, copie et favoris
 
 ### Graphisme
 
