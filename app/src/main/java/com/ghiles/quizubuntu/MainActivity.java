@@ -24,6 +24,7 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -371,6 +372,7 @@ public class MainActivity extends Activity {
         int dailyGoal = 10;
         TextView daily = card(
             "Aujourd'hui : " + Math.min(dailyDone, dailyGoal) + " / " + dailyGoal + " questions\n" +
+            "Série quotidienne : " + prefs.getInt("dailyStreak", 0) + " jour(s)\n" +
             (dailyDone >= dailyGoal ? "✓ Objectif quotidien atteint" : "Encore " + (dailyGoal - dailyDone) + " question(s) pour terminer")
         );
         root.addView(daily);
@@ -933,10 +935,22 @@ public class MainActivity extends Activity {
     }
 
     private void recordDailyAnswer() {
-        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date());
+        SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+        String today = fmt.format(new Date());
         String savedDay = prefs.getString("daily_day", "");
+
         if (!today.equals(savedDay)) {
-            prefs.edit().putString("daily_day", today).putInt("daily_answered", 1).apply();
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DAY_OF_YEAR, -1);
+            String yesterday = fmt.format(cal.getTime());
+            int oldStreak = prefs.getInt("dailyStreak", 0);
+            int newStreak = yesterday.equals(savedDay) ? oldStreak + 1 : 1;
+
+            prefs.edit()
+                .putString("daily_day", today)
+                .putInt("daily_answered", 1)
+                .putInt("dailyStreak", newStreak)
+                .apply();
         } else {
             prefs.edit().putInt("daily_answered", prefs.getInt("daily_answered", 0) + 1).apply();
         }
