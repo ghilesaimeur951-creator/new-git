@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -427,6 +428,13 @@ public class SimulatorActivity extends Activity {
     private void buildUi() {
         getWindow().setStatusBarColor(UBUNTU_BG);
         getWindow().setNavigationBarColor(Color.rgb(18,18,20));
+
+        // Android 11+ / Android 15 edge-to-edge:
+        // receive IME + system-bar insets ourselves so the command bar can
+        // never be covered by the software keyboard.
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+        }
 
         LinearLayout screen = new LinearLayout(this);
         screen.setOrientation(LinearLayout.VERTICAL);
@@ -1832,11 +1840,24 @@ public class SimulatorActivity extends Activity {
                 android.graphics.Insets bars = insets.getInsets(
                     WindowInsets.Type.systemBars()
                 );
+                android.graphics.Insets ime = insets.getInsets(
+                    WindowInsets.Type.ime()
+                );
 
                 left = bars.left;
                 top = bars.top;
                 right = bars.right;
-                bottom = bars.bottom;
+
+                // Critical keyboard fix: reserve whichever is taller,
+                // navigation bar or IME. With edge-to-edge enabled, this
+                // physically lifts the complete command bar (prompt + input +
+                // Exécuter button) above the keyboard instead of letting the
+                // keyboard draw over it.
+                bottom = Math.max(bars.bottom, ime.bottom);
+
+                if (insets.isVisible(WindowInsets.Type.ime())) {
+                    scroll.postDelayed(this::scrollBottom, 80);
+                }
             } else {
                 left = insets.getSystemWindowInsetLeft();
                 top = insets.getSystemWindowInsetTop();
@@ -1852,6 +1873,30 @@ public class SimulatorActivity extends Activity {
             );
 
             return insets;
+        });
+
+        // Device/manufacturer fallback. Some keyboards on older Android
+        // versions overlay the app instead of reporting a useful IME inset.
+        // When that happens, measure the visible window and translate only
+        // the fixed command bar above the obscured area.
+        view.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if (commandBar == null || commandBar.getHeight() == 0) return;
+
+            Rect visible = new Rect();
+            view.getWindowVisibleDisplayFrame(visible);
+
+            int[] location = new int[2];
+            commandBar.getLocationOnScreen(location);
+
+            int commandBottom = location[1] + commandBar.getHeight();
+            int overlap = commandBottom - visible.bottom;
+
+            if (overlap > dp(2)) {
+                commandBar.setTranslationY(-overlap - dp(4));
+                scroll.postDelayed(this::scrollBottom, 50);
+            } else if (commandBar.getTranslationY() != 0f) {
+                commandBar.setTranslationY(0f);
+            }
         });
 
         view.requestApplyInsets();
