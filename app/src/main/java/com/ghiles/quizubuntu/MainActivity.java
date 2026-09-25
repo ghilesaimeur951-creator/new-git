@@ -334,8 +334,8 @@ public class MainActivity extends Activity {
         TextView labTitle = text(">_  Laboratoire Ubuntu", 19, true);
         labTitle.setTextColor(accentColor());
         labCard.addView(labTitle);
-        addBody(labCard, "Un PC Ubuntu simulé avec objectifs, terminal interactif, 4 propositions ou saisie libre.", 14);
-        Button simulator = actionButton("Ouvrir le PC Ubuntu simulé");
+        addBody(labCard, "Ubuntu Lab V4 : missions guidées, terminal libre réaliste et mode GitHub réel sécurisé.", 14);
+        Button simulator = actionButton("Ouvrir Ubuntu Lab V4");
         simulator.setOnClickListener(v -> startActivity(new Intent(this, SimulatorActivity.class)));
         labCard.addView(simulator);
         root.addView(labCard, spaced(10));
