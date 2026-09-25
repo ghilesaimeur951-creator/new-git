@@ -2,6 +2,16 @@
 
 Application Android de révision et de pratique basée sur les supports de cours fournis : Bash/Ubuntu, Git, branches, GitHub/SSH, synchronisation et conflits.
 
+## Version 3.1 — Safe Area mobile
+
+Cette mise à jour améliore l'utilisation sur téléphone :
+
+- le contenu ne passe plus sous la barre d'état en haut
+- le contenu ne passe plus sous la barre de navigation / gestes Android en bas
+- marges de sécurité supplémentaires en haut et en bas
+- meilleure prise en compte des écrans avec encoche ou bordures système
+- le terminal simulé reste visible lorsque le clavier Android s'ouvre grâce au redimensionnement de la fenêtre
+
 ## Version 3.0 — Ubuntu Lab
 
 La V3 ajoute un véritable espace de pratique en plus du quiz.
