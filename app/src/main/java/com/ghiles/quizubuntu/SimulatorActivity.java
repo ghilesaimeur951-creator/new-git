@@ -356,10 +356,13 @@ public class SimulatorActivity extends Activity {
 
     private ScrollView scroll;
     private LinearLayout root;
+    private LinearLayout environmentSection;
     private LinearLayout simulationModes;
     private LinearLayout realControls;
     private LinearLayout choicesBox;
     private LinearLayout objectivePanel;
+    private LinearLayout interactionRow;
+    private LinearLayout terminalToolsRow;
     private LinearLayout commandBar;
 
     private TextView terminalView;
@@ -368,6 +371,7 @@ public class SimulatorActivity extends Activity {
     private TextView interactionLabel;
     private TextView realStatusView;
     private TextView commandPromptView;
+    private TextView sectionTitleView;
 
     private EditText commandInput;
 
@@ -487,6 +491,9 @@ public class SimulatorActivity extends Activity {
         buildFixedCommandBar(screen);
         protectFromSystemBars(screen);
 
+        if (environmentSection != null) environmentSection.setVisibility(View.GONE);
+        if (simulationModes != null) simulationModes.setVisibility(View.GONE);
+
         setContentView(screen);
     }
 
@@ -494,18 +501,22 @@ public class SimulatorActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(5), dp(3), dp(5), dp(5));
+        bar.setPadding(dp(2), dp(2), dp(2), dp(5));
 
-        TextView activities = terminalText("Activités", 11, true, Color.WHITE);
+        Button menu = compactButton("☰");
+        menu.setTextColor(Color.WHITE);
+        menu.setBackgroundColor(Color.TRANSPARENT);
+        menu.setContentDescription("Ouvrir les rubriques Ubuntu Lab");
+        menu.setOnClickListener(v -> showLabMenu());
         bar.addView(
-            activities,
+            menu,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
-        TextView center = terminalText("Ubuntu Lab", 11, true, Color.WHITE);
-        center.setGravity(Gravity.CENTER);
+        sectionTitleView = terminalText("Terminal libre", 11, true, Color.WHITE);
+        sectionTitleView.setGravity(Gravity.CENTER);
         bar.addView(
-            center,
+            sectionTitleView,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
@@ -542,8 +553,11 @@ public class SimulatorActivity extends Activity {
     }
 
     private void addEnvironmentSelector() {
+        environmentSection = new LinearLayout(this);
+        environmentSection.setOrientation(LinearLayout.VERTICAL);
+
         TextView label = terminalText("ENVIRONNEMENT", 10, true, Color.rgb(230,210,225));
-        root.addView(label);
+        environmentSection.addView(label);
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -566,7 +580,8 @@ public class SimulatorActivity extends Activity {
         rp.leftMargin = dp(6);
         row.addView(realButton, rp);
 
-        root.addView(row);
+        environmentSection.addView(row);
+        root.addView(environmentSection);
     }
 
     private void addSimulationModeSelector() {
@@ -682,13 +697,13 @@ public class SimulatorActivity extends Activity {
     }
 
     private void addInteractionRow() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(7), 0, dp(5));
+        interactionRow = new LinearLayout(this);
+        interactionRow.setOrientation(LinearLayout.HORIZONTAL);
+        interactionRow.setGravity(Gravity.CENTER_VERTICAL);
+        interactionRow.setPadding(0, dp(7), 0, dp(5));
 
         interactionLabel = terminalText("", 10, true, Color.WHITE);
-        row.addView(
+        interactionRow.addView(
             interactionLabel,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
@@ -699,9 +714,9 @@ public class SimulatorActivity extends Activity {
             prefs.edit().putBoolean("simTypingMode", typingMode).apply();
             renderInteraction();
         });
-        row.addView(interactionButton);
+        interactionRow.addView(interactionButton);
 
-        root.addView(row);
+        root.addView(interactionRow);
     }
 
     private void addTerminal() {
@@ -740,9 +755,9 @@ public class SimulatorActivity extends Activity {
     }
 
     private void addTerminalTools() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(6), 0, 0);
+        terminalToolsRow = new LinearLayout(this);
+        terminalToolsRow.setOrientation(LinearLayout.HORIZONTAL);
+        terminalToolsRow.setPadding(0, dp(6), 0, 0);
 
         Button clear = smallButton("Vider écran");
         clear.setOnClickListener(v -> {
@@ -750,7 +765,7 @@ public class SimulatorActivity extends Activity {
             appendSystem(realEnvironment ? "[GITHUB RÉEL]" : "[SIMULATION]");
             refreshTerminal();
         });
-        row.addView(
+        terminalToolsRow.addView(
             clear,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
@@ -770,7 +785,7 @@ public class SimulatorActivity extends Activity {
             1f
         );
         cp.leftMargin = dp(5);
-        row.addView(copy, cp);
+        terminalToolsRow.addView(copy, cp);
 
         Button reset = smallButton("Reset VM");
         reset.setOnClickListener(v -> confirmReset());
@@ -780,9 +795,9 @@ public class SimulatorActivity extends Activity {
             1f
         );
         rp.leftMargin = dp(5);
-        row.addView(reset, rp);
+        terminalToolsRow.addView(reset, rp);
 
-        root.addView(row);
+        root.addView(terminalToolsRow);
     }
 
     private void buildFixedCommandBar(LinearLayout screen) {
@@ -816,6 +831,8 @@ public class SimulatorActivity extends Activity {
 
         commandInput = new EditText(this);
         commandInput.setSingleLine(true);
+        commandInput.setFocusable(true);
+        commandInput.setFocusableInTouchMode(true);
         commandInput.setTextColor(Color.WHITE);
         commandInput.setHintTextColor(Color.rgb(135,135,142));
         commandInput.setHint("commande…");
@@ -841,9 +858,12 @@ public class SimulatorActivity extends Activity {
             }
         });
 
-        commandInput.setOnClickListener(v ->
-            scroll.postDelayed(this::scrollBottom, 150)
-        );
+        commandInput.setOnClickListener(v -> {
+            if (!commandInput.hasFocus()) {
+                commandInput.requestFocus();
+            }
+            scroll.postDelayed(this::scrollBottom, 120);
+        });
 
         commandInput.setOnEditorActionListener((v, actionId, event) -> {
             boolean enter =
@@ -887,6 +907,112 @@ public class SimulatorActivity extends Activity {
         updateCommandPrompt();
     }
 
+    private void showLabMenu() {
+        String[] items = {
+            "Terminal libre",
+            "Missions guidées",
+            "GitHub réel",
+            "Aide & commandes",
+            "Retour à l'Academy"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Ubuntu Lab — rubriques")
+            .setItems(items, (dialog, which) -> {
+                if (which == 0) {
+                    setEnvironment(false);
+                    setGuidedMode(false);
+                } else if (which == 1) {
+                    setEnvironment(false);
+                    setGuidedMode(true);
+                } else if (which == 2) {
+                    setEnvironment(true);
+                } else if (which == 3) {
+                    showHelpSections();
+                } else {
+                    finish();
+                }
+            })
+            .show();
+    }
+
+    private void showHelpSections() {
+        String[] topics = {
+            "Navigation Bash",
+            "Fichiers & redirections",
+            "Git quotidien",
+            "Branches & remotes",
+            "SSH",
+            "Synchronisation & conflits"
+        };
+
+        new AlertDialog.Builder(this)
+            .setTitle("Aide & commandes")
+            .setItems(topics, (dialog, which) -> {
+                String text;
+
+                if (which == 0) {
+                    text = "pwd\nls\nls -l\nls -la\ncd dossier\ncd ..\ncd ~\nhistory\nclear";
+                } else if (which == 1) {
+                    text = "mkdir\nmkdir -p\ntouch\necho\n>\n>>\ncat\nnano\nmv\ncp\ncp -r\nrm\nrm -r\nrmdir";
+                } else if (which == 2) {
+                    text = "git --version\ngit config\ngit init\ngit status\ngit add\ngit add .\ngit commit -m\ngit log\ngit log -p\ngit diff\ngit diff --staged";
+                } else if (which == 3) {
+                    text = "git branch\ngit branch -a\ngit branch -M main\ngit branch -d\ngit switch\ngit switch -c\ngit remote -v\ngit remote get-url origin\ngit remote add origin URL\ngit remote set-url origin URL\ngit remote remove origin";
+                } else if (which == 4) {
+                    text = "ls -al ~/.ssh\nssh-keygen -t ed25519 -C \"email\"\neval \"$(ssh-agent -s)\"\nssh-add ~/.ssh/id_ed25519\ncat ~/.ssh/id_ed25519.pub\nssh-keygen -lf ~/.ssh/id_ed25519.pub\nssh -T git@github.com";
+                } else {
+                    text = "git fetch\ngit fetch --all\ngit fetch --prune\ngit pull origin main\ngit pull --rebase origin main\ngit push\ngit push -u origin main\ngit ls-remote origin\ngit merge --abort\ngit log --graph --oneline --decorate --all";
+                }
+
+                new AlertDialog.Builder(this)
+                    .setTitle(topics[which])
+                    .setMessage(text)
+                    .setPositiveButton("Fermer", null)
+                    .show();
+            })
+            .show();
+    }
+
+    private void applySectionLayout() {
+        if (environmentSection != null) {
+            environmentSection.setVisibility(View.GONE);
+        }
+
+        if (simulationModes != null) {
+            simulationModes.setVisibility(View.GONE);
+        }
+
+        if (realEnvironment) {
+            sectionTitleView.setText("GitHub réel");
+            realControls.setVisibility(View.VISIBLE);
+            objectivePanel.setVisibility(View.GONE);
+            interactionRow.setVisibility(View.GONE);
+            choicesBox.setVisibility(View.GONE);
+            nextMissionButton.setVisibility(View.GONE);
+            commandBar.setVisibility(View.VISIBLE);
+        } else if (guidedMode) {
+            sectionTitleView.setText("Missions");
+            realControls.setVisibility(View.GONE);
+            objectivePanel.setVisibility(View.VISIBLE);
+            interactionRow.setVisibility(View.VISIBLE);
+            choicesBox.setVisibility(View.VISIBLE);
+            nextMissionButton.setVisibility(View.VISIBLE);
+        } else {
+            sectionTitleView.setText("Terminal libre");
+            realControls.setVisibility(View.GONE);
+            objectivePanel.setVisibility(View.GONE);
+            interactionRow.setVisibility(View.GONE);
+            choicesBox.setVisibility(View.GONE);
+            nextMissionButton.setVisibility(View.GONE);
+            commandBar.setVisibility(View.VISIBLE);
+        }
+
+        if (terminalToolsRow != null) {
+            terminalToolsRow.setVisibility(View.VISIBLE);
+        }
+    }
+
     private void setEnvironment(boolean real) {
         realEnvironment = real;
         prefs.edit().putBoolean("labRealEnvironment", real).apply();
@@ -927,6 +1053,7 @@ public class SimulatorActivity extends Activity {
         commandBar.setVisibility(View.VISIBLE);
         commandInput.setVisibility(View.VISIBLE);
         updateCommandPrompt();
+        applySectionLayout();
         refreshTerminal();
         scrollBottom();
     }
@@ -1006,6 +1133,7 @@ public class SimulatorActivity extends Activity {
         appendSystem("[mission] " + scenario.title);
         renderInteraction();
         updateCommandPrompt();
+        applySectionLayout();
         refreshTerminal();
     }
 
@@ -1039,6 +1167,7 @@ public class SimulatorActivity extends Activity {
 
         appendSystem("[terminal libre] Tape help pour la liste des commandes.");
         updateCommandPrompt();
+        applySectionLayout();
         refreshTerminal();
         scrollBottom();
     }
@@ -1054,6 +1183,7 @@ public class SimulatorActivity extends Activity {
         if (typingMode) {
             interactionLabel.setText("MISSION : écris la commande");
             commandBar.setVisibility(View.VISIBLE);
+            commandInput.setVisibility(View.VISIBLE);
         } else {
             interactionLabel.setText("MISSION : 4 propositions");
             commandInput.clearFocus();
@@ -1798,9 +1928,16 @@ public class SimulatorActivity extends Activity {
     }
 
     private void scrollBottom() {
-        if (scroll == null) return;
+        if (scroll == null || root == null) return;
 
-        scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+        // Do not use fullScroll(FOCUS_DOWN) here: ScrollView treats that as
+        // keyboard focus navigation and can immediately steal focus from the
+        // command EditText. Scroll only by coordinates so the text field keeps
+        // focus while the user types.
+        scroll.post(() -> {
+            int target = Math.max(0, root.getHeight() - scroll.getHeight());
+            scroll.smoothScrollTo(0, target);
+        });
     }
 
     private boolean normalizeEquals(String a, String b) {
@@ -1880,6 +2017,7 @@ public class SimulatorActivity extends Activity {
         // When that happens, measure the visible window and translate only
         // the fixed command bar above the obscured area.
         view.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if (Build.VERSION.SDK_INT >= 30) return;
             if (commandBar == null || commandBar.getHeight() == 0) return;
 
             Rect visible = new Rect();
