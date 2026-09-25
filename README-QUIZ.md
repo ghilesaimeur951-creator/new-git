@@ -149,7 +149,10 @@ ssh-keygen -t ed25519 -C "email"
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub
+cat -A ~/.ssh/id_ed25519.pub
 ssh-keygen -lf ~/.ssh/id_ed25519.pub
+xclip -selection clipboard < ~/.ssh/id_ed25519.pub
+wl-copy < ~/.ssh/id_ed25519.pub
 ssh -T git@github.com
 ```
 
