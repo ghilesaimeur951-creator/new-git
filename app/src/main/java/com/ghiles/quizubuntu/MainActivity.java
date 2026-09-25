@@ -3,6 +3,8 @@ package com.ghiles.quizubuntu;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -14,6 +16,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -354,6 +357,10 @@ public class MainActivity extends Activity {
         Button lessons = secondaryFullButton("Fiches de cours");
         lessons.setOnClickListener(v -> showCourseMenu());
         root.addView(lessons);
+
+        Button library = secondaryFullButton("Bibliothèque — rechercher, copier, favoris");
+        library.setOnClickListener(v -> showCommandLibrary(""));
+        root.addView(library);
 
         Button export = secondaryFullButton("Exporter ma progression");
         export.setOnClickListener(v -> shareProgress());
@@ -946,6 +953,146 @@ public class MainActivity extends Activity {
         SharedPreferences.Editor e = prefs.edit().putInt(a, prefs.getInt(a, 0) + 1);
         if (correct) e.putInt(c, prefs.getInt(c, 0) + 1);
         e.apply();
+    }
+
+    private void showCommandLibrary(String initialQuery) {
+        applySystemBars();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(bgColor());
+        LinearLayout root = column(18, 18, 18, 28);
+        scroll.addView(root);
+
+        addTitle(root, "Bibliothèque des commandes", 27);
+        addBody(root, "Recherche une commande, copie-la ou ajoute-la aux favoris.", 15);
+
+        EditText search = new EditText(this);
+        search.setHint("Ex. ssh, branch, status, mkdir...");
+        search.setText(initialQuery);
+        search.setSingleLine(true);
+        search.setTextColor(textColor());
+        search.setHintTextColor(secondaryTextColor());
+        search.setBackground(roundedDrawable(surfaceColor(), 16, borderColor()));
+        search.setPadding(dp(14), dp(10), dp(14), dp(10));
+        root.addView(search);
+
+        LinearLayout results = new LinearLayout(this);
+        results.setOrientation(LinearLayout.VERTICAL);
+        root.addView(results, spaced(10));
+
+        Button doSearch = actionButton("Rechercher");
+        doSearch.setOnClickListener(v -> renderCommandLibrary(results, search.getText().toString()));
+        root.addView(doSearch, spaced(8));
+
+        Button onlyFavorites = secondaryFullButton("Afficher uniquement mes favoris");
+        onlyFavorites.setOnClickListener(v -> renderCommandLibrary(results, "__FAVORITES__"));
+        root.addView(onlyFavorites);
+
+        renderCommandLibrary(results, initialQuery);
+
+        Button back = secondaryFullButton("← Accueil");
+        back.setOnClickListener(v -> showHome());
+        root.addView(back, spaced(14));
+        setContentView(scroll);
+    }
+
+    private void renderCommandLibrary(LinearLayout results, String query) {
+        results.removeAllViews();
+
+        String[][] commands = new String[][]{
+            {"pwd", "Afficher le chemin absolu du dossier courant"},
+            {"ls", "Lister le contenu visible"},
+            {"ls -la", "Afficher les détails et les fichiers cachés"},
+            {"cd dossier", "Entrer dans un dossier"},
+            {"cd ..", "Remonter d'un niveau"},
+            {"cd ~", "Revenir dans le dossier personnel"},
+            {"mkdir -p a/b/c", "Créer une arborescence avec ses parents"},
+            {"touch fichier.txt", "Créer un fichier vide"},
+            {"cat fichier.txt", "Lire le contenu d'un fichier"},
+            {"echo \"texte\" > fichier.txt", "Créer ou remplacer le contenu"},
+            {"echo \"suite\" >> fichier.txt", "Ajouter du texte à la fin"},
+            {"rm -r dossier", "Supprimer récursivement un dossier"},
+            {"history", "Afficher l'historique des commandes"},
+            {"git init", "Initialiser un dépôt Git"},
+            {"git status", "Voir l'état du working directory et du staging"},
+            {"git add README.md", "Préparer un fichier pour le prochain commit"},
+            {"git commit -m \"message\"", "Créer un commit avec un message"},
+            {"git log", "Afficher l'historique des commits"},
+            {"git log -p", "Afficher les commits avec leurs différences"},
+            {"git remote -v", "Afficher les remotes et leurs URL"},
+            {"git remote add origin URL", "Ajouter le remote origin"},
+            {"git remote set-url origin URL", "Modifier l'URL du remote origin"},
+            {"git push -u origin main", "Premier push de main avec upstream"},
+            {"git push", "Publier les commits vers le remote suivi"},
+            {"git pull --rebase origin main", "Récupérer le distant puis rejouer les commits locaux"},
+            {"git switch -c feature", "Créer une branche et basculer dessus"},
+            {"git branch -d feature", "Supprimer prudemment une branche locale"},
+            {"git push origin feature", "Publier une branche distante"},
+            {"git push origin --delete feature", "Supprimer une branche sur origin"},
+            {"git diff", "Afficher les changements non staged"},
+            {"git diff --staged", "Afficher ce qui est préparé pour le commit"},
+            {"ssh-keygen -t ed25519 -C \"email\"", "Créer une paire de clés SSH Ed25519"},
+            {"cat ~/.ssh/id_ed25519.pub", "Afficher la clé publique SSH"},
+            {"ssh -T git@github.com", "Tester l'authentification SSH GitHub"}
+        };
+
+        Set<String> favorites = new HashSet<>(prefs.getStringSet("favoriteCommands", Collections.emptySet()));
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        boolean favOnly = "__favorites__".equals(q);
+
+        int shown = 0;
+        for (String[] item : commands) {
+            String cmd = item[0];
+            String desc = item[1];
+            if (favOnly && !favorites.contains(cmd)) continue;
+            if (!favOnly && !q.isEmpty() &&
+                !cmd.toLowerCase(Locale.ROOT).contains(q) &&
+                !desc.toLowerCase(Locale.ROOT).contains(q)) continue;
+
+            LinearLayout card = column(14, 14, 14, 14);
+            card.setBackground(roundedDrawable(surfaceColor(), 18, borderColor()));
+
+            TextView command = text(cmd, 15, true);
+            command.setTypeface(Typeface.MONOSPACE);
+            command.setTextColor(accentColor());
+            card.addView(command);
+            addBody(card, desc, 13);
+
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+
+            Button copy = secondaryButton("Copier");
+            copy.setOnClickListener(v -> {
+                ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                cb.setPrimaryClip(ClipData.newPlainText("commande", cmd));
+                copy.setText("Copié ✓");
+            });
+            actions.addView(copy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            Button favorite = secondaryButton(favorites.contains(cmd) ? "★ Favori" : "☆ Favori");
+            favorite.setOnClickListener(v -> {
+                Set<String> set = new HashSet<>(prefs.getStringSet("favoriteCommands", Collections.emptySet()));
+                if (set.contains(cmd)) {
+                    set.remove(cmd);
+                    favorite.setText("☆ Favori");
+                } else {
+                    set.add(cmd);
+                    favorite.setText("★ Favori");
+                }
+                prefs.edit().putStringSet("favoriteCommands", set).apply();
+            });
+            LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            fp.leftMargin = dp(6);
+            actions.addView(favorite, fp);
+
+            card.addView(actions);
+            results.addView(card, spaced(7));
+            shown++;
+        }
+
+        if (shown == 0) {
+            TextView empty = card("Aucune commande trouvée.");
+            results.addView(empty);
+        }
     }
 
     private void shareProgress() {
