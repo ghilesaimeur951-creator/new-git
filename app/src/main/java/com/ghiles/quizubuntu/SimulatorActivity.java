@@ -531,25 +531,25 @@ public class SimulatorActivity extends Activity {
     }
 
     private void addCompactHeader() {
-        LinearLayout header = panel(Color.rgb(67, 18, 51), 14);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(3), dp(2), dp(3), dp(5));
 
-        TextView title = terminalText(">_ Ubuntu & Git Academy", 18, true, Color.WHITE);
-        header.addView(title);
-
-        TextView subtitle = terminalText(
-            "Terminal Ubuntu simulé + GitHub réel HTTPS",
-            11,
-            false,
-            Color.rgb(221,204,217)
+        TextView title = terminalText("Ubuntu 24.04 LTS", 11, true, Color.WHITE);
+        header.addView(
+            title,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
-        subtitle.setPadding(0, dp(3), 0, 0);
-        header.addView(subtitle);
 
-        root.addView(header, topMargin(3));
+        scoreView = terminalText("", 10, false, Color.rgb(221,204,217));
+        scoreView.setGravity(Gravity.END);
+        header.addView(
+            scoreView,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
 
-        scoreView = terminalText("", 11, true, Color.WHITE);
-        scoreView.setPadding(dp(2), dp(7), dp(2), dp(5));
-        root.addView(scoreView);
+        root.addView(header);
     }
 
     private void addEnvironmentSelector() {
@@ -742,12 +742,12 @@ public class SimulatorActivity extends Activity {
 
         terminalView = new TextView(this);
         terminalView.setTypeface(Typeface.MONOSPACE);
-        terminalView.setTextSize(12f);
+        terminalView.setTextSize(11.5f);
         terminalView.setTextColor(TERMINAL_TEXT);
         terminalView.setTextIsSelectable(true);
         terminalView.setLineSpacing(0f, 1.03f);
         terminalView.setPadding(0, dp(6), 0, dp(5));
-        terminalView.setMinLines(8);
+        terminalView.setMinLines(12);
         terminalView.setText(terminal);
 
         window.addView(terminalView);
@@ -803,66 +803,56 @@ public class SimulatorActivity extends Activity {
     private void buildFixedCommandBar(LinearLayout screen) {
         commandBar = new LinearLayout(this);
         commandBar.setOrientation(LinearLayout.VERTICAL);
-        commandBar.setPadding(dp(9), dp(6), dp(9), dp(7));
-        commandBar.setBackgroundColor(Color.rgb(18,18,20));
-
-        commandPromptView = new TextView(this);
-        commandPromptView.setTypeface(Typeface.MONOSPACE);
-        commandPromptView.setTextSize(10.5f);
-        commandPromptView.setPadding(dp(2), 0, dp(2), dp(3));
-        commandBar.addView(commandPromptView);
+        commandBar.setPadding(dp(8), dp(5), dp(8), dp(7));
+        commandBar.setBackgroundColor(TERMINAL_BG);
 
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
         inputRow.setGravity(Gravity.CENTER_VERTICAL);
-
-        Button previous = compactButton("↑");
-        previous.setOnClickListener(v -> historyPrevious());
-        inputRow.addView(previous);
-
-        Button next = compactButton("↓");
-        next.setOnClickListener(v -> historyNext());
-        LinearLayout.LayoutParams nextParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+        inputRow.setPadding(dp(7), dp(5), dp(5), dp(5));
+        inputRow.setBackground(
+            rounded(
+                Color.rgb(24,24,27),
+                9,
+                Color.rgb(67,67,74)
+            )
         );
-        nextParams.leftMargin = dp(3);
-        inputRow.addView(next, nextParams);
+
+        commandPromptView = new TextView(this);
+        commandPromptView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        commandPromptView.setTextSize(12.5f);
+        commandPromptView.setSingleLine(true);
+        commandPromptView.setPadding(0, 0, dp(4), 0);
+        commandPromptView.setFocusable(false);
+        inputRow.addView(commandPromptView);
 
         commandInput = new EditText(this);
         commandInput.setSingleLine(true);
         commandInput.setFocusable(true);
         commandInput.setFocusableInTouchMode(true);
         commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.rgb(135,135,142));
-        commandInput.setHint("commande…");
+        commandInput.setHintTextColor(Color.rgb(115,115,122));
+        commandInput.setHint("tape ta commande ici…");
         commandInput.setTypeface(Typeface.MONOSPACE);
-        commandInput.setTextSize(12.5f);
+        commandInput.setTextSize(15f);
+        commandInput.setMinHeight(dp(44));
         commandInput.setInputType(
             InputType.TYPE_CLASS_TEXT |
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         );
-        commandInput.setBackground(
-            rounded(
-                Color.rgb(39,39,43),
-                8,
-                Color.rgb(74,74,82)
-            )
-        );
-        commandInput.setPadding(dp(9), dp(7), dp(9), dp(7));
+        commandInput.setBackgroundColor(Color.TRANSPARENT);
+        commandInput.setPadding(dp(3), 0, dp(4), 0);
         commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
 
         commandInput.setOnFocusChangeListener((v, focused) -> {
             if (focused) {
-                scroll.postDelayed(this::scrollBottom, 150);
+                scroll.postDelayed(this::scrollBottom, 120);
             }
         });
 
         commandInput.setOnClickListener(v -> {
-            if (!commandInput.hasFocus()) {
-                commandInput.requestFocus();
-            }
-            scroll.postDelayed(this::scrollBottom, 120);
+            commandInput.requestFocus();
+            scroll.postDelayed(this::scrollBottom, 80);
         });
 
         commandInput.setOnEditorActionListener((v, actionId, event) -> {
@@ -880,21 +870,57 @@ public class SimulatorActivity extends Activity {
             return false;
         });
 
-        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1f
+        inputRow.addView(
+            commandInput,
+            new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         );
-        inputParams.leftMargin = dp(5);
-        inputParams.rightMargin = dp(5);
-        inputRow.addView(commandInput, inputParams);
 
-        Button execute = accentButton("Exécuter");
-        execute.setTextSize(11f);
+        Button execute = compactButton("↵");
+        execute.setTextSize(18f);
+        execute.setContentDescription("Exécuter la commande");
+        execute.setTextColor(Color.WHITE);
+        execute.setBackground(rounded(UBUNTU_ORANGE, 8, 0));
         execute.setOnClickListener(v -> executeInput());
         inputRow.addView(execute);
 
         commandBar.addView(inputRow);
+
+        LinearLayout utilityRow = new LinearLayout(this);
+        utilityRow.setOrientation(LinearLayout.HORIZONTAL);
+        utilityRow.setGravity(Gravity.CENTER_VERTICAL);
+        utilityRow.setPadding(dp(2), dp(4), dp(2), 0);
+
+        TextView hint = terminalText(
+            "Écris directement après le prompt • Entrée = exécuter",
+            9.5f,
+            false,
+            TERMINAL_MUTED
+        );
+        utilityRow.addView(
+            hint,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        Button previous = compactButton("↑");
+        previous.setContentDescription("Commande précédente");
+        previous.setOnClickListener(v -> historyPrevious());
+        utilityRow.addView(previous);
+
+        Button next = compactButton("↓");
+        next.setContentDescription("Commande suivante");
+        next.setOnClickListener(v -> historyNext());
+        LinearLayout.LayoutParams nextParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        nextParams.leftMargin = dp(3);
+        utilityRow.addView(next, nextParams);
+
+        commandBar.addView(utilityRow);
 
         screen.addView(
             commandBar,
@@ -2046,6 +2072,23 @@ public class SimulatorActivity extends Activity {
         layout.setPadding(dp(11), dp(9), dp(11), dp(9));
         layout.setBackground(rounded(color, radius, 0));
         return layout;
+    }
+
+    private TextView terminalText(
+        String text,
+        float size,
+        boolean bold,
+        int color
+    ) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(size);
+        view.setTextColor(color);
+        view.setTypeface(
+            Typeface.MONOSPACE,
+            bold ? Typeface.BOLD : Typeface.NORMAL
+        );
+        return view;
     }
 
     private TextView terminalText(
