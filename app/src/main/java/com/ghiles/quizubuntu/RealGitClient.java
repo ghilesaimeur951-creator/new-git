@@ -268,6 +268,56 @@ public final class RealGitClient {
                     : "Branche supprimée : " + String.join(", ", deleted);
             }
 
+            if (command.startsWith("git checkout -b ")) {
+                String name = command.substring("git checkout -b ".length()).trim();
+
+                git.checkout()
+                    .setCreateBranch(true)
+                    .setName(name)
+                    .call();
+
+                return "Switched to a new branch '" + name + "'";
+            }
+
+            if (command.startsWith("git checkout -B ")) {
+                String name = command.substring("git checkout -B ".length()).trim();
+
+                try {
+                    git.branchDelete()
+                        .setBranchNames(name)
+                        .setForce(true)
+                        .call();
+                } catch (Exception ignored) {
+                }
+
+                git.checkout()
+                    .setCreateBranch(true)
+                    .setName(name)
+                    .call();
+
+                return "Switched to and reset branch '" + name + "'";
+            }
+
+            if (command.startsWith("git checkout -- ")) {
+                String path = command.substring("git checkout -- ".length()).trim();
+
+                git.checkout()
+                    .addPath(path)
+                    .call();
+
+                return "";
+            }
+
+            if (command.startsWith("git checkout ")) {
+                String name = command.substring("git checkout ".length()).trim();
+
+                git.checkout()
+                    .setName(name)
+                    .call();
+
+                return "Switched to branch '" + name + "'";
+            }
+
             if (command.startsWith("git switch -c ")) {
                 String name = command.substring("git switch -c ".length()).trim();
 
