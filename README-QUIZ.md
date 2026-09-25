@@ -1,126 +1,289 @@
 # Ubuntu & Git Academy
 
-Application Android de révision et de pratique basée sur les supports de cours fournis : Bash/Ubuntu, Git, branches, GitHub/SSH, synchronisation et conflits.
+Application Android d'apprentissage de Bash/Ubuntu, Git, GitHub, SSH, branches, synchronisation, merge et conflits, construite à partir des supports de cours du projet.
 
-## Version 3.2 — Ubuntu Lab libre
+## Version 4.0 — Ubuntu Lab
 
-Cette mise à jour améliore fortement le laboratoire Ubuntu :
+La V4 transforme le Laboratoire Ubuntu en deux environnements clairement séparés :
 
-- barre de saisie fixée en bas de l'écran, au-dessus du clavier Android
-- le clavier redimensionne l'écran au lieu de masquer le champ de commande
-- recentrage automatique du terminal quand le champ reçoit le focus
-- deux modes séparés : **Missions guidées** et **Terminal libre**
-- en missions guidées : choix entre 4 propositions ou saisie manuelle de la commande
-- en terminal libre : possibilité de taper librement des commandes simulées
-- commandes Bash simulées supplémentaires : `whoami`, `hostname`, `uname`, `date`, `id`, `cp`, `mv`, `rm`, `rmdir`, `nano`, `history`, `clear`
-- commandes Git supplémentaires : `git --version`, `git branch`, `git switch`, `git fetch`, plusieurs formes de `git push`
-- enchaînement simple avec `&&`
-- commande `help` pour afficher les commandes disponibles
+- **SIMULATION** : machine Ubuntu/Git virtuelle, locale et sans danger ;
+- **GITHUB RÉEL** : dépôt Git réellement cloné dans l'espace privé de l'application, avec opérations réseau HTTPS explicites.
 
-Le terminal reste un **simulateur pédagogique** : il n'exécute jamais de commande réelle sur Android.
+### Interface Ubuntu
 
-## Version 3.1 — Safe Area mobile
+Le terminal utilise une interface compacte inspirée de GNOME Terminal :
 
-Cette mise à jour améliore l'utilisation sur téléphone :
+```text
+ubuntu@academy:~$ ls
+Documents  Projets  Téléchargements  notes.txt
 
-- le contenu ne passe plus sous la barre d'état en haut
-- le contenu ne passe plus sous la barre de navigation / gestes Android en bas
-- marges de sécurité supplémentaires en haut et en bas
-- meilleure prise en compte des écrans avec encoche ou bordures système
-- le terminal simulé reste visible lorsque le clavier Android s'ouvre grâce au redimensionnement de la fenêtre
+ubuntu@academy:~$ cd Projets
+ubuntu@academy:~/Projets$
+```
 
-## Version 3.0 — Ubuntu Lab
+Le prompt reflète le dossier courant. Les dossiers sont affichés en bleu, les fichiers ordinaires en blanc, les erreurs en rouge et les succès en vert. La police est monospace et volontairement plus petite pour conserver une vraie sensation de terminal sur téléphone.
 
-La V3 ajoute un véritable espace de pratique en plus du quiz.
+La barre de saisie est fixe sous la zone de terminal. Android `adjustResize` et les safe areas gardent le champ de commande au-dessus du clavier et des boutons/gestes système. La touche Entrée exécute la commande, le terminal défile automatiquement vers les dernières lignes, et des boutons ↑/↓ permettent de rappeler l'historique.
 
-### PC Ubuntu simulé
+## SIMULATION
 
-Le nouveau **Laboratoire Ubuntu** reproduit un terminal pédagogique sans exécuter de commandes sur le vrai téléphone.
+### Terminal libre
 
-Il propose des objectifs guidés comme :
+Le terminal libre conserve un état cohérent pendant toute la session :
 
-- afficher le dossier courant avec `pwd`
-- inspecter les fichiers cachés avec `ls -la`
-- créer une arborescence avec `mkdir -p`
-- créer des fichiers avec `touch`
-- initialiser un dépôt avec `git init`
-- vérifier l'état avec `git status`
-- préparer et créer un commit
-- vérifier ou ajouter un remote GitHub
-- créer une paire de clés SSH Ed25519
-- tester GitHub avec `ssh -T git@github.com`
-- publier `main` avec `git push -u origin main`
-- synchroniser avec `git pull --rebase origin main`
-- créer une branche avec `git switch -c`
-- inspecter les changements avec `git diff`
-- inspecter le staging avec `git diff --staged`
-- terminer une résolution de conflit avec `git add README.md`
+- arborescence virtuelle `/`, `/home`, `/home/ubuntu` et sous-dossiers ;
+- dossier courant ;
+- fichiers, dossiers et contenu des fichiers ;
+- historique des commandes ;
+- dépôt Git, HEAD, branche courante et branches ;
+- staging area ;
+- commits avec messages et snapshots ;
+- remote `origin`, branches distantes simulées et `origin/main` ;
+- état de conflit ;
+- clés et agent SSH simulés.
 
-Chaque mission peut être réalisée de deux façons :
+La simulation ne lance **aucun shell Android** et ne modifie pas le système réel du téléphone.
 
-- **4 propositions**
-- **commande libre tapée au clavier**
+### Commandes Bash prises en charge
 
-Le simulateur maintient un petit état virtuel : dossier courant, fichiers, dépôt Git, staging, remote, branche et clé SSH. Il ne touche pas au système réel.
+```text
+pwd
+ls
+ls -l
+ls -la
+cd
+cd ..
+cd ~
+mkdir
+mkdir -p
+touch
+echo
+>
+>>
+cat
+nano
+mv
+cp
+cp -r
+rm
+rm -r
+rmdir
+clear
+history
+whoami
+hostname
+uname
+uname -a
+id
+date
+```
 
-### Nouveaux modes d'apprentissage
+`nano fichier` ouvre un éditeur pédagogique dans l'application et enregistre le contenu dans le système de fichiers virtuel.
 
-- **Quiz rapide** : 10 questions aléatoires
-- **Mode examen** : 20 questions sans correction immédiate
-- **Entraînement adaptatif** : privilégie les questions déjà ratées
-- **Révision ciblée** : Bash, Git, Branches, SSH, Synchronisation ou Conflits
-- **Révision des erreurs** : retire une question de la liste lorsqu'elle est réussie
-- **Fiches de cours** : rappels structurés par niveau
+### Git simulé
 
-### Progression
+```text
+git --version
+git config --global user.name "..."
+git config --global user.email "..."
+git config --global --list
+git config --list --show-origin
+git config --global --unset ...
+git clone URL
+git init
+git status
+git add fichier
+git add .
+git commit -m "message"
+git log
+git log -p
+git log --oneline
+git log --graph --oneline --decorate --all
+git diff
+git diff --staged
+git branch
+git branch -a
+git branch -M main
+git branch -d branche
+git switch branche
+git switch -c branche
+git remote -v
+git remote get-url origin
+git remote add origin URL
+git remote set-url origin URL
+git remote remove origin
+git fetch
+git fetch --all
+git fetch --prune
+git pull origin main
+git pull --rebase origin main
+git pull origin main --allow-unrelated-histories
+git push
+git push origin main
+git push -u origin main
+git push --set-upstream origin main
+git push origin branche
+git push origin --delete branche
+git push --force-with-lease origin main
+git ls-remote origin
+git ls-remote --heads origin
+git merge --abort
+git show --oneline --stat HASH
+```
 
-- objectif quotidien de 10 questions
-- série quotidienne de révision
-- XP global
-- Lab XP dans le simulateur
-- précision globale
-- maîtrise par thème
-- meilleure série
-- scores par niveau
-- badges
-- export texte de la progression
-- bibliothèque de commandes avec recherche, copie et favoris
+Le modèle virtuel représente `working directory`, `staging area`, commits, branches, `HEAD`, `main`, `origin/main`, divergence et conflits. Un scénario de conflit peut produire les marqueurs :
 
-### Graphisme
+```text
+<<<<<<< HEAD
+LOCAL
+=======
+REMOTE
+>>>>>>> origin/main
+```
 
-- thème clair / sombre
-- interface inspirée d'un terminal Ubuntu
-- cartes de niveaux
-- barres de progression
-- graphiques de précision
-- réponses correctes en vert et erreurs en rouge
-- nouvelle icône terminal Ubuntu & Git Academy
+### SSH simulé
 
-## Version 2.1
+```text
+ls -al ~/.ssh
+ssh-keygen -t ed25519 -C "email"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub
+ssh-keygen -lf ~/.ssh/id_ed25519.pub
+ssh -T git@github.com
+```
 
-- tableau de bord avec niveau joueur et barre XP
-- thème clair / sombre
-- cartes de niveaux
-- mode Réviser mes erreurs
-- navigation Accueil / Stats / Badges / Mémo
-- graphiques adaptés au thème sombre
+La clé privée du simulateur n'est jamais exposée comme une vraie clé.
 
-## Niveaux
+## Missions guidées
 
-1. **Fondamentaux Ubuntu** — navigation, dossiers et fichiers
-2. **Fichiers et premiers pas Git** — redirections et bases Git
-3. **Workflow Git** — staging, commits, diff et remotes
-4. **Branches, GitHub et SSH** — branches distantes et clés SSH
-5. **Synchronisation et conflits** — rebase et résolution de conflits
+Les missions utilisent le même terminal et le même état virtuel. Pour chaque situation, l'utilisateur peut choisir entre :
+
+- **4 propositions** ;
+- **écrire lui-même la commande**.
+
+Les scénarios couvrent navigation, fichiers, redirections, initialisation Git, staging, commits, branches, remotes, premier push, rebase, SSH, création volontaire d'un conflit, lecture des marqueurs, résolution, vérification staged et lecture du graphe Git.
+
+## GITHUB RÉEL
+
+Le mode **GITHUB RÉEL** est séparé visuellement et fonctionnellement de la simulation. Les commandes réseau ne sont jamais déclenchées depuis le mode SIMULATION.
+
+### Connexion
+
+La V4 utilise HTTPS avec un **fine-grained personal access token GitHub** fourni volontairement par l'utilisateur. Aucun token n'est présent dans le code source ou dans le dépôt.
+
+Le token est :
+
+- saisi dans l'application ;
+- validé auprès de l'API GitHub ;
+- chiffré avec AES/GCM ;
+- protégé par une clé stockée dans **Android Keystore** ;
+- supprimé avec le bouton **Déconnexion**.
+
+Pour lire/cloner/pull un dépôt, le token doit disposer des droits nécessaires sur ce dépôt. Pour pousser, il doit également autoriser l'écriture du contenu.
+
+La V4 utilise ce mécanisme plutôt qu'un faux écran OAuth : le GitHub Device Flow nécessite l'identifiant public d'une OAuth App ou GitHub App enregistrée. Aucun client secret ou token n'est embarqué dans l'APK.
+
+### Dépôts
+
+Après connexion :
+
+1. **Choisir dépôt** récupère les dépôts réellement accessibles au compte.
+2. Le dépôt choisi devient la cible affichée par l'application.
+3. **Cloner / ouvrir** clone le dépôt via HTTPS dans l'espace privé Android de l'application.
+4. Les commandes Git prises en charge travaillent sur cette copie locale réelle.
+
+Le moteur Git réel est **JGit 6.10.1**. Il n'exécute pas de binaire shell arbitraire.
+
+### Commandes réelles principales
+
+Le mode réel prend notamment en charge :
+
+```text
+git clone https://github.com/OWNER/REPO.git
+git status
+git remote -v
+git remote get-url origin
+git remote add origin URL
+git remote set-url origin URL
+git remote remove origin
+git branch
+git branch -a
+git branch -M main
+git branch -d branche
+git switch branche
+git switch -c branche
+git add fichier
+git add .
+git commit -m "message"
+git log
+git log --oneline
+git log --graph --oneline --decorate --all
+git diff
+git diff --staged
+git fetch
+git fetch origin
+git fetch --all
+git fetch --prune
+git pull origin main
+git pull --rebase origin main
+git push
+git push origin main
+git push -u origin main
+git push origin branche
+git push origin --delete branche
+git ls-remote origin
+git ls-remote --heads origin
+git config ...
+git show ...
+```
+
+Les opérations réseau affichent explicitement qu'elles sont **réelles**.
+
+### Sécurité du mode réel
+
+- aucun shell root ou shell Android arbitraire ;
+- dépôt réel isolé dans le stockage privé de l'application ;
+- authentification HTTPS uniquement dans cette version ;
+- les exercices SSH restent dans la simulation ;
+- suppression de branche distante : confirmation obligatoire ;
+- `git push --force-with-lease` : confirmation obligatoire, puis refus de l'exécuter automatiquement dans cette version tant que la protection de lease n'est pas garantie de bout en bout ;
+- le dépôt ciblé `origin = OWNER/REPO` est affiché avant les actions dangereuses ;
+- aucune clé privée SSH réelle n'est demandée ou stockée.
+
+## Autres modes de l'Academy
+
+L'application conserve également :
+
+- 5 niveaux de quiz ;
+- XP, bonus de séries et progression ;
+- quiz rapide de 10 questions ;
+- examen de 20 questions sans correction immédiate ;
+- entraînement adaptatif ;
+- révision ciblée ;
+- révision des erreurs ;
+- fiches de cours ;
+- badges ;
+- statistiques et graphiques ;
+- objectif et série quotidienne ;
+- bibliothèque de commandes avec recherche, copie et favoris ;
+- thème clair/sombre ;
+- export de progression.
+
+## Limites assumées
+
+Ubuntu Lab est une **machine pédagogique**, pas une VM Linux complète. Les commandes de la formation sont reproduites dans le mode SIMULATION, mais une commande Linux arbitraire inconnue n'est jamais exécutée directement sur Android.
+
+Le mode GITHUB RÉEL est différent : ses opérations Git prises en charge utilisent réellement Internet et le dépôt sélectionné. L'interface signale toujours l'environnement actif.
 
 ## Générer l'APK
 
-Le workflow `.github/workflows/build-apk.yml` compile automatiquement l'application à chaque push sur `main`.
+Le workflow `.github/workflows/build-apk.yml` compile automatiquement chaque push sur `main`.
 
 1. Ouvre **Actions**.
 2. Ouvre **Build Android APK**.
-3. Ouvre la dernière exécution verte.
-4. Dans **Artifacts**, télécharge **quiz-ubuntu-git-apk**.
+3. Choisis la dernière exécution verte.
+4. Télécharge l'artifact **quiz-ubuntu-git-apk**.
 5. Décompresse le ZIP.
 6. Installe `app-debug.apk` sur Android.
 
@@ -130,6 +293,10 @@ Le workflow `.github/workflows/build-apk.yml` compile automatiquement l'applicat
 - Android SDK 35
 - Gradle 8.9
 - Android Gradle Plugin 8.7.3
+- JGit 6.10.1
+- Android Keystore / AES-GCM pour le token GitHub
+
+Compilation :
 
 ```bash
 gradle :app:assembleDebug
@@ -140,3 +307,11 @@ APK :
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Historique récent
+
+- **4.0** — Ubuntu Lab réaliste, VM Git stateful, GitHub réel HTTPS sécurisé.
+- **3.2** — terminal libre et correctif clavier.
+- **3.1** — safe areas Android.
+- **3.0** — premier Ubuntu Lab.
+- **2.1** — UI, progression et révision des erreurs.
