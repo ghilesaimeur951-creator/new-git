@@ -471,6 +471,26 @@ public final class VirtualMachine {
             return Result.normal("");
         }
 
+        if ("cat -a ~/.ssh/id_ed25519.pub".equals(n)) {
+            return sshPrivateKeyExists
+                ? Result.normal("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... student@example.com$")
+                : Result.error(
+                    "cat: /home/ubuntu/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type"
+                );
+        }
+
+        if ("xclip -selection clipboard < ~/.ssh/id_ed25519.pub".equals(n)) {
+            return sshPrivateKeyExists
+                ? Result.success("[simulation] clé publique copiée dans le presse-papiers X11.")
+                : Result.error("bash: ~/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type");
+        }
+
+        if ("wl-copy < ~/.ssh/id_ed25519.pub".equals(n)) {
+            return sshPrivateKeyExists
+                ? Result.success("[simulation] clé publique copiée dans le presse-papiers Wayland.")
+                : Result.error("bash: ~/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type");
+        }
+
         if (n.startsWith("git ") || "gh auth login".equals(n)) {
             return executeGit(command);
         }
@@ -1605,7 +1625,8 @@ public final class VirtualMachine {
             "SSH:\n" +
             "  ls -al ~/.ssh, ssh-keygen -t ed25519 -C \"email\"\n" +
             "  eval \"$(ssh-agent -s)\", ssh-add ~/.ssh/id_ed25519\n" +
-            "  cat ~/.ssh/id_ed25519.pub, ssh-keygen -lf ~/.ssh/id_ed25519.pub\n" +
+            "  cat ~/.ssh/id_ed25519.pub, cat -A ~/.ssh/id_ed25519.pub\n" +
+            "  ssh-keygen -lf ~/.ssh/id_ed25519.pub, xclip, wl-copy\n" +
             "  ssh -T git@github.com\n\n" +
             "Le terminal est simulé : aucune commande arbitraire n'est exécutée sur Android.";
     }
