@@ -15,6 +15,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -423,6 +424,7 @@ public class MainActivity extends Activity {
         }
 
         addBottomNav(root, "Accueil");
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -541,6 +543,8 @@ public class MainActivity extends Activity {
         nextButton.setVisibility(View.GONE);
         nextButton.setOnClickListener(v -> nextQuestion());
         root.addView(nextButton);
+
+        protectFromSystemBars(scroll);
 
         setContentView(scroll);
         renderQuestion();
@@ -753,6 +757,8 @@ public class MainActivity extends Activity {
         home.setOnClickListener(v -> showHome());
         root.addView(home);
 
+        protectFromSystemBars(scroll);
+
         setContentView(scroll);
     }
 
@@ -830,6 +836,7 @@ public class MainActivity extends Activity {
         Button back = secondaryFullButton("← Accueil");
         back.setOnClickListener(v -> showHome());
         root.addView(back, spaced(10));
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -866,6 +873,7 @@ public class MainActivity extends Activity {
         Button back = secondaryFullButton("← Accueil");
         back.setOnClickListener(v -> showHome());
         root.addView(back, spaced(10));
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -931,6 +939,7 @@ public class MainActivity extends Activity {
         Button back = secondaryFullButton("← Fiches de cours");
         back.setOnClickListener(v -> showCourseMenu());
         root.addView(back);
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -1006,6 +1015,7 @@ public class MainActivity extends Activity {
         Button back = secondaryFullButton("← Accueil");
         back.setOnClickListener(v -> showHome());
         root.addView(back, spaced(14));
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -1193,6 +1203,7 @@ public class MainActivity extends Activity {
         }
 
         addBottomNav(root, "Stats");
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -1220,6 +1231,7 @@ public class MainActivity extends Activity {
         addBadge(root, "1000 points", "Accumuler au moins 1000 points.", totalPoints >= 1000);
 
         addBottomNav(root, "Badges");
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -1282,6 +1294,7 @@ public class MainActivity extends Activity {
             "<<<<<<< HEAD / ======= / >>>>>>> — marqueurs de conflit");
 
         addBottomNav(root, "Mémo");
+        protectFromSystemBars(scroll);
         setContentView(scroll);
     }
 
@@ -1509,6 +1522,30 @@ public class MainActivity extends Activity {
         d.setCornerRadius(dp(radiusDp));
         if (stroke != 0) d.setStroke(dp(1), stroke);
         return d;
+    }
+
+    private void protectFromSystemBars(View view) {
+        final int baseLeft = view.getPaddingLeft();
+        final int baseTop = view.getPaddingTop();
+        final int baseRight = view.getPaddingRight();
+        final int baseBottom = view.getPaddingBottom();
+
+        view.setFitsSystemWindows(false);
+        view.setOnApplyWindowInsetsListener((v, insets) -> {
+            int left = insets.getSystemWindowInsetLeft();
+            int top = insets.getSystemWindowInsetTop();
+            int right = insets.getSystemWindowInsetRight();
+            int bottom = insets.getSystemWindowInsetBottom();
+
+            v.setPadding(
+                baseLeft + left,
+                baseTop + top + dp(8),
+                baseRight + right,
+                baseBottom + bottom + dp(12)
+            );
+            return insets;
+        });
+        view.requestApplyInsets();
     }
 
     private void applySystemBars() {
