@@ -2,6 +2,22 @@
 
 Application Android de révision des commandes Ubuntu/Bash, Git, GitHub, SSH, branches et conflits.
 
+## Version 2.1
+
+La V2.1 améliore principalement l'interface et la progression :
+
+- nouveau tableau de bord visuel avec niveau joueur et barre XP
+- bouton **Continuer** vers le prochain niveau utile
+- thème **clair / sombre** mémorisé
+- cartes de niveaux avec progression visuelle
+- réponses colorées : bonne réponse en vert, erreur sélectionnée en rouge
+- mode **Réviser mes erreurs** avec liste persistante des questions à revoir
+- une question disparaît de la liste d'erreurs lorsqu'elle est réussie en révision
+- navigation rapide **Accueil / Stats / Badges / Mémo**
+- graphiques adaptés au thème sombre
+- nouvelle identité graphique inspirée du terminal Ubuntu
+- version Android 2.1
+
 ## Version 2.0
 
 L'application ne se limite plus à un QCM. Elle comprend maintenant :
