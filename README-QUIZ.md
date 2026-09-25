@@ -1,39 +1,78 @@
 # Ubuntu & Git Academy
 
-Application Android de révision des commandes Ubuntu/Bash, Git, GitHub, SSH, branches et conflits.
+Application Android de révision et de pratique basée sur les supports de cours fournis : Bash/Ubuntu, Git, branches, GitHub/SSH, synchronisation et conflits.
+
+## Version 3.0 — Ubuntu Lab
+
+La V3 ajoute un véritable espace de pratique en plus du quiz.
+
+### PC Ubuntu simulé
+
+Le nouveau **Laboratoire Ubuntu** reproduit un terminal pédagogique sans exécuter de commandes sur le vrai téléphone.
+
+Il propose des objectifs guidés comme :
+
+- afficher le dossier courant avec `pwd`
+- inspecter les fichiers cachés avec `ls -la`
+- créer une arborescence avec `mkdir -p`
+- créer des fichiers avec `touch`
+- initialiser un dépôt avec `git init`
+- vérifier l'état avec `git status`
+- préparer et créer un commit
+- vérifier ou ajouter un remote GitHub
+- créer une paire de clés SSH Ed25519
+- tester GitHub avec `ssh -T git@github.com`
+- publier `main` avec `git push -u origin main`
+- synchroniser avec `git pull --rebase origin main`
+- créer une branche avec `git switch -c`
+- inspecter les changements avec `git diff`
+
+Chaque mission peut être réalisée de deux façons :
+
+- **4 propositions**
+- **commande libre tapée au clavier**
+
+Le simulateur maintient un petit état virtuel : dossier courant, fichiers, dépôt Git, staging, remote, branche et clé SSH. Il ne touche pas au système réel.
+
+### Nouveaux modes d'apprentissage
+
+- **Quiz rapide** : 10 questions aléatoires
+- **Mode examen** : 20 questions sans correction immédiate
+- **Entraînement adaptatif** : privilégie les questions déjà ratées
+- **Révision ciblée** : Bash, Git, Branches, SSH, Synchronisation ou Conflits
+- **Révision des erreurs** : retire une question de la liste lorsqu'elle est réussie
+- **Fiches de cours** : rappels structurés par niveau
+
+### Progression
+
+- objectif quotidien de 10 questions
+- XP global
+- Lab XP dans le simulateur
+- précision globale
+- maîtrise par thème
+- meilleure série
+- scores par niveau
+- badges
+- export texte de la progression
+
+### Graphisme
+
+- thème clair / sombre
+- interface inspirée d'un terminal Ubuntu
+- cartes de niveaux
+- barres de progression
+- graphiques de précision
+- réponses correctes en vert et erreurs en rouge
+- nouvelle icône terminal Ubuntu & Git Academy
 
 ## Version 2.1
 
-La V2.1 améliore principalement l'interface et la progression :
-
-- nouveau tableau de bord visuel avec niveau joueur et barre XP
-- bouton **Continuer** vers le prochain niveau utile
-- thème **clair / sombre** mémorisé
-- cartes de niveaux avec progression visuelle
-- réponses colorées : bonne réponse en vert, erreur sélectionnée en rouge
-- mode **Réviser mes erreurs** avec liste persistante des questions à revoir
-- une question disparaît de la liste d'erreurs lorsqu'elle est réussie en révision
-- navigation rapide **Accueil / Stats / Badges / Mémo**
+- tableau de bord avec niveau joueur et barre XP
+- thème clair / sombre
+- cartes de niveaux
+- mode Réviser mes erreurs
+- navigation Accueil / Stats / Badges / Mémo
 - graphiques adaptés au thème sombre
-- nouvelle identité graphique inspirée du terminal Ubuntu
-- version Android 2.1
-
-## Version 2.0
-
-L'application ne se limite plus à un QCM. Elle comprend maintenant :
-
-- 5 niveaux progressifs avec déblocage à 70 %
-- points par bonne réponse
-- bonus de série pour les bonnes réponses consécutives
-- sauvegarde de la progression sur le téléphone
-- exemples de terminal après chaque réponse
-- illustrations pédagogiques intégrées
-- page de statistiques
-- graphique des meilleurs scores par niveau
-- graphique circulaire de précision globale
-- badges de progression
-- mémo des commandes
-- meilleur score enregistré par niveau
 
 ## Niveaux
 
@@ -41,48 +80,31 @@ L'application ne se limite plus à un QCM. Elle comprend maintenant :
 2. **Fichiers et premiers pas Git** — redirections et bases Git
 3. **Workflow Git** — staging, commits, diff et remotes
 4. **Branches, GitHub et SSH** — branches distantes et clés SSH
-5. **Synchronisation et conflits** — rebase, merge et résolution de conflits
+5. **Synchronisation et conflits** — rebase et résolution de conflits
 
-## Système de points
-
-Une bonne réponse rapporte 100 points.
-
-Une série de bonnes réponses ajoute un bonus progressif :
-
-- 2e bonne réponse consécutive : +25
-- 3e : +50
-- 4e : +75
-- puis bonus plafonné à +100
-
-Les statistiques et la progression restent enregistrées localement dans l'application.
-
-## Générer l'APK avec GitHub Actions
+## Générer l'APK
 
 Le workflow `.github/workflows/build-apk.yml` compile automatiquement l'application à chaque push sur `main`.
 
-1. Ouvre l'onglet **Actions** du dépôt GitHub.
+1. Ouvre **Actions**.
 2. Ouvre **Build Android APK**.
 3. Ouvre la dernière exécution verte.
 4. Dans **Artifacts**, télécharge **quiz-ubuntu-git-apk**.
 5. Décompresse le ZIP.
-6. Installe `app-debug.apk` sur ton téléphone Android.
+6. Installe `app-debug.apk` sur Android.
 
 ## Développement
-
-Le projet utilise :
 
 - Java 17
 - Android SDK 35
 - Gradle 8.9
 - Android Gradle Plugin 8.7.3
 
-Commande de compilation :
-
 ```bash
 gradle :app:assembleDebug
 ```
 
-APK généré :
+APK :
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
