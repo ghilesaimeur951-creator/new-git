@@ -10,8 +10,8 @@ android {
         applicationId = "com.ghiles.quizubuntu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 9
-        versionName = "4.1"
+        versionCode = 10
+        versionName = "4.2"
     }
 
     compileOptions {
