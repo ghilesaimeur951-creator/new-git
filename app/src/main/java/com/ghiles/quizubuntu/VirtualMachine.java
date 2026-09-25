@@ -104,8 +104,12 @@ public final class VirtualMachine {
     private final Set<String> directories = new LinkedHashSet<>();
     private final Map<String,String> files = new LinkedHashMap<>();
     private final List<String> commandHistory = new ArrayList<>();
+    private final Map<String,String> environment = new LinkedHashMap<>();
+    private final Map<String,String> aliases = new LinkedHashMap<>();
+    private final List<Map<String,String>> stashSnapshots = new ArrayList<>();
 
     private String cwd = "/home/ubuntu";
+    private String previousCwd = "/home/ubuntu";
 
     private boolean gitInitialized = false;
     private String repoRoot = "";
@@ -139,6 +143,9 @@ public final class VirtualMachine {
         directories.clear();
         files.clear();
         commandHistory.clear();
+        environment.clear();
+        aliases.clear();
+        stashSnapshots.clear();
 
         directories.add("/");
         directories.add("/home");
@@ -150,6 +157,21 @@ public final class VirtualMachine {
         files.put("/home/ubuntu/notes.txt", "Notes Ubuntu & Git\n");
 
         cwd = "/home/ubuntu";
+        previousCwd = cwd;
+
+        environment.put("HOME", "/home/ubuntu");
+        environment.put("USER", "ubuntu");
+        environment.put("LOGNAME", "ubuntu");
+        environment.put("HOSTNAME", "academy");
+        environment.put("SHELL", "/bin/bash");
+        environment.put("TERM", "xterm-256color");
+        environment.put("LANG", "fr_FR.UTF-8");
+        environment.put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        environment.put("PWD", cwd);
+
+        aliases.put("ll", "ls -la");
+        aliases.put("la", "ls -A");
+        aliases.put("l", "ls -CF");
 
         gitInitialized = false;
         repoRoot = "";
@@ -275,6 +297,39 @@ public final class VirtualMachine {
         String n = normalize(command);
 
         if ("help".equals(n)) return Result.normal(helpText());
+
+        if (n.startsWith("help ")) {
+            String query = command.substring(5).trim();
+            String matches = CommandCatalog.suggestions(query, 24);
+            return Result.normal(matches.isEmpty() ? "Aucune entrée pour : " + query : matches);
+        }
+
+        if (n.startsWith("apropos ")) {
+            String query = command.substring(8).trim();
+            String matches = CommandCatalog.suggestions(query, 30);
+            return Result.normal(matches.isEmpty() ? query + ": rien d'approprié" : matches);
+        }
+
+        if (n.startsWith("man ")) {
+            String query = command.substring(4).trim();
+            String matches = CommandCatalog.suggestions(query, 18);
+            return Result.normal(
+                "UBUNTU LAB MANUAL\n\n" +
+                (matches.isEmpty() ? "No manual entry for " + query : matches) +
+                "\n\nCatalogue : " + CommandCatalog.count() + "+ signatures d'entraînement."
+            );
+        }
+
+        if ("compgen -c".equals(n)) {
+            StringBuilder out = new StringBuilder();
+            Set<String> names = new LinkedHashSet<>();
+            for (CommandCatalog.Entry entry : CommandCatalog.all()) {
+                String first = entry.command.split("\\s+")[0];
+                if (names.add(first)) out.append(first).append('\n');
+            }
+            return Result.normal(out.toString().trim());
+        }
+
         if ("clear".equals(n)) return Result.clear();
 
         if ("history".equals(n)) {
@@ -286,6 +341,10 @@ public final class VirtualMachine {
                     .append('\n');
             }
             return Result.normal(out.toString().trim());
+        }
+
+        if (aliases.containsKey(n)) {
+            return execute(aliases.get(n));
         }
 
         if ("pwd".equals(n)) return Result.normal(cwd);
@@ -319,12 +378,24 @@ public final class VirtualMachine {
         }
 
         if ("cd".equals(n) || "cd ~".equals(n)) {
+            previousCwd = cwd;
             cwd = "/home/ubuntu";
+            environment.put("PWD", cwd);
             return Result.normal("");
         }
 
+        if ("cd -".equals(n)) {
+            String next = previousCwd;
+            previousCwd = cwd;
+            cwd = next;
+            environment.put("PWD", cwd);
+            return Result.normal(cwd);
+        }
+
         if ("cd ..".equals(n)) {
+            previousCwd = cwd;
             cwd = parent(cwd);
+            environment.put("PWD", cwd);
             return Result.normal("");
         }
 
@@ -338,7 +409,9 @@ public final class VirtualMachine {
                 );
             }
 
+            previousCwd = cwd;
             cwd = path;
+            environment.put("PWD", cwd);
             return Result.normal("");
         }
 
@@ -491,6 +564,9 @@ public final class VirtualMachine {
                 : Result.error("bash: ~/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type");
         }
 
+        Result extended = executeExtendedShell(command);
+        if (extended != null) return extended;
+
         if (n.startsWith("git ") || "gh auth login".equals(n)) {
             return executeGit(command);
         }
@@ -504,7 +580,10 @@ public final class VirtualMachine {
 
         return Result.error(
             command.split("\\s+")[0] +
-            ": commande introuvable dans cet environnement pédagogique"
+            ": commande introuvable dans cet environnement pédagogique" +
+            (CommandCatalog.suggestions(command, 4).isEmpty()
+                ? ""
+                : "\nSuggestions :\n" + CommandCatalog.suggestions(command, 4))
         );
     }
 
