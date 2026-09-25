@@ -1,51 +1,72 @@
-# Quiz Ubuntu & Git
+# Ubuntu & Git Academy
 
-Application Android de révision basée sur les supports de cours fournis : Bash/Ubuntu, Git, branches, GitHub/SSH et conflits.
+Application Android de révision des commandes Ubuntu/Bash, Git, GitHub, SSH, branches et conflits.
 
-## Contenu
+## Version 2.0
 
-Le quiz couvre notamment :
+L'application ne se limite plus à un QCM. Elle comprend maintenant :
 
-- navigation Bash : `pwd`, `ls`, `cd`
-- fichiers et dossiers : `mkdir`, `touch`, `cat`, `rm`
-- redirections `>` et `>>`
-- cycle Git : `status → add → commit → push`
-- branches, HEAD, staging area et diffs
-- SSH GitHub
-- synchronisation et conflits
+- 5 niveaux progressifs avec déblocage à 70 %
+- points par bonne réponse
+- bonus de série pour les bonnes réponses consécutives
+- sauvegarde de la progression sur le téléphone
+- exemples de terminal après chaque réponse
+- illustrations pédagogiques intégrées
+- page de statistiques
+- graphique des meilleurs scores par niveau
+- graphique circulaire de précision globale
+- badges de progression
+- mémo des commandes
+- meilleur score enregistré par niveau
 
-Les questions sont mélangées à chaque nouvelle partie. Une correction est affichée après chaque réponse.
+## Niveaux
+
+1. **Fondamentaux Ubuntu** — navigation, dossiers et fichiers
+2. **Fichiers et premiers pas Git** — redirections et bases Git
+3. **Workflow Git** — staging, commits, diff et remotes
+4. **Branches, GitHub et SSH** — branches distantes et clés SSH
+5. **Synchronisation et conflits** — rebase, merge et résolution de conflits
+
+## Système de points
+
+Une bonne réponse rapporte 100 points.
+
+Une série de bonnes réponses ajoute un bonus progressif :
+
+- 2e bonne réponse consécutive : +25
+- 3e : +50
+- 4e : +75
+- puis bonus plafonné à +100
+
+Les statistiques et la progression restent enregistrées localement dans l'application.
 
 ## Générer l'APK avec GitHub Actions
 
-Le workflow `.github/workflows/build-apk.yml` compile automatiquement l'application.
+Le workflow `.github/workflows/build-apk.yml` compile automatiquement l'application à chaque push sur `main`.
 
 1. Ouvre l'onglet **Actions** du dépôt GitHub.
 2. Ouvre **Build Android APK**.
-3. Une fois le build terminé, ouvre l'exécution réussie.
+3. Ouvre la dernière exécution verte.
 4. Dans **Artifacts**, télécharge **quiz-ubuntu-git-apk**.
-5. Décompresse le fichier ZIP pour obtenir `app-debug.apk`.
-6. Transfère l'APK sur ton téléphone Android et ouvre-le pour l'installer.
+5. Décompresse le ZIP.
+6. Installe `app-debug.apk` sur ton téléphone Android.
 
-Android peut demander d'autoriser temporairement l'installation d'applications provenant de cette source.
-
-## Développement local
+## Développement
 
 Le projet utilise :
 
-- Kotlin
-- Android SDK 35
 - Java 17
+- Android SDK 35
 - Gradle 8.9
 - Android Gradle Plugin 8.7.3
 
-Pour compiler sans Android Studio :
+Commande de compilation :
 
 ```bash
 gradle :app:assembleDebug
 ```
 
-L'APK se trouve ensuite dans :
+APK généré :
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
