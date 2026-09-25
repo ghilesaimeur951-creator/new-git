@@ -10,6 +10,8 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
@@ -203,6 +205,7 @@ public class SimulatorActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("quiz_progress", MODE_PRIVATE);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         labPoints = prefs.getInt("labPoints", 0);
         typingMode = prefs.getBoolean("simTypingMode", true);
         resetMachine();
@@ -375,6 +378,7 @@ public class SimulatorActivity extends Activity {
         back.setOnClickListener(v -> finish());
         root.addView(back);
 
+        protectFromSystemBars(outer);
         setContentView(outer);
     }
 
@@ -643,6 +647,30 @@ public class SimulatorActivity extends Activity {
             b.append("\n");
         }
         return b.toString();
+    }
+
+    private void protectFromSystemBars(View view) {
+        final int baseLeft = view.getPaddingLeft();
+        final int baseTop = view.getPaddingTop();
+        final int baseRight = view.getPaddingRight();
+        final int baseBottom = view.getPaddingBottom();
+
+        view.setFitsSystemWindows(false);
+        view.setOnApplyWindowInsetsListener((v, insets) -> {
+            int left = insets.getSystemWindowInsetLeft();
+            int top = insets.getSystemWindowInsetTop();
+            int right = insets.getSystemWindowInsetRight();
+            int bottom = insets.getSystemWindowInsetBottom();
+
+            v.setPadding(
+                baseLeft + left,
+                baseTop + top + dp(8),
+                baseRight + right,
+                baseBottom + bottom + dp(14)
+            );
+            return insets;
+        });
+        view.requestApplyInsets();
     }
 
     private LinearLayout panel(int color, int radius) {
