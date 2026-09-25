@@ -157,6 +157,20 @@ public class SimulatorActivity extends Activity {
             "Cette commande compare le working directory à la staging area.",
             new String[]{"git diff", "git diff --staged", "git log -p", "git status -s"},
             "git diff"
+        ),
+        new Scenario(
+            "Voir ce qui est staged",
+            "Tu as préparé des changements avec git add. Affiche ce qui est déjà prêt pour le prochain commit.",
+            "Cette commande compare la staging area à HEAD.",
+            new String[]{"git diff --staged", "git diff", "git log", "git remote -v"},
+            "git diff --staged"
+        ),
+        new Scenario(
+            "Résoudre un conflit",
+            "Tu as édité README.md et supprimé les marqueurs de conflit. Marque maintenant le fichier comme résolu dans l'index.",
+            "Après la résolution manuelle, git add enregistre la décision dans l'index.",
+            new String[]{"git add README.md", "git push README.md", "git status README.md", "git rm README.md"},
+            "git add README.md"
         )
     );
 
@@ -342,7 +356,7 @@ public class SimulatorActivity extends Activity {
         commandRow.addView(executeButton, execParams);
         root.addView(commandRow, marginTop(8));
 
-        Button next = accentButton("Nouvel objectif aléatoire");
+        Button next = accentButton("Passer à l'objectif suivant");
         next.setOnClickListener(v -> {
             scenarioIndex = (scenarioIndex + 1) % scenarios.size();
             showScenario();
