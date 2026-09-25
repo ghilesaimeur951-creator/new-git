@@ -1142,6 +1142,38 @@ public final class VirtualMachine {
         if ("git branch".equals(n)) return gitBranch(false);
         if ("git branch -a".equals(n)) return gitBranch(true);
 
+        if (n.startsWith("git branch -D ")) {
+            String name = command.substring("git branch -D ".length()).trim();
+
+            if (name.equals(headBranch)) {
+                return Result.error("error: Cannot delete branch '" + name + "' checked out");
+            }
+
+            branches.remove(name);
+            return Result.success("Deleted branch " + name + " (forced).");
+        }
+
+        if (n.startsWith("git branch ") &&
+            !n.startsWith("git branch -") &&
+            command.trim().split("\\s+").length >= 3) {
+
+            String[] args = command.trim().split("\\s+");
+            String name = args[2];
+
+            if (branches.containsKey(name)) {
+                return Result.error("fatal: a branch named '" + name + "' already exists");
+            }
+
+            String start = branches.getOrDefault(headBranch, "");
+            if (args.length >= 4) {
+                Commit startCommit = findCommit(args[3]);
+                if (startCommit != null) start = startCommit.hash;
+            }
+
+            branches.put(name, start);
+            return Result.success("Branch '" + name + "' created.");
+        }
+
         if (n.startsWith("git branch -m ") || n.startsWith("git branch -M ")) {
             int offset = command.indexOf(' ', command.indexOf(' ') + 1) + 1;
             String newName = command.substring(offset).trim();
@@ -1170,6 +1202,14 @@ public final class VirtualMachine {
 
             branches.remove(name);
             return Result.success("Deleted branch " + name + ".");
+        }
+
+        if (command.startsWith("git switch -C ")) {
+            String name = command.substring("git switch -C ".length()).trim();
+            branches.put(name, branches.getOrDefault(headBranch, ""));
+            headBranch = name;
+            checkoutHeadSnapshot();
+            return Result.success("Switched to and reset branch '" + name + "'");
         }
 
         if (n.startsWith("git switch -c ")) {
@@ -1204,6 +1244,14 @@ public final class VirtualMachine {
             return Result.success("Switched to branch '" + name + "'");
         }
 
+        if (command.startsWith("git checkout -B ")) {
+            String name = command.substring("git checkout -B ".length()).trim();
+            branches.put(name, branches.getOrDefault(headBranch, ""));
+            headBranch = name;
+            checkoutHeadSnapshot();
+            return Result.success("Switched to and reset branch '" + name + "'");
+        }
+
         if (n.startsWith("git checkout -b ")) {
             String name = command.substring("git checkout -b ".length()).trim();
 
@@ -1224,6 +1272,17 @@ public final class VirtualMachine {
             headBranch = name;
             checkoutHeadSnapshot();
             return Result.success("Switched to and reset branch '" + name + "'");
+        }
+
+        if (n.startsWith("git checkout --detach ")) {
+            String ref = command.substring("git checkout --detach ".length()).trim();
+            Commit commit = findCommit(ref);
+            if (commit == null && "HEAD".equalsIgnoreCase(ref)) {
+                commit = findCommit(branches.getOrDefault(headBranch, ""));
+            }
+            return commit == null
+                ? Result.error("fatal: invalid reference: " + ref)
+                : Result.success("HEAD is now detached at " + commit.hash + " " + commit.message);
         }
 
         if ("git checkout -".equals(n) || "git switch -".equals(n)) {
