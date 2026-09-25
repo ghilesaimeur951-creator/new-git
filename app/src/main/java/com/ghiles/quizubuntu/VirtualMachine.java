@@ -1204,6 +1204,342 @@ public final class VirtualMachine {
             return Result.success("Switched to branch '" + name + "'");
         }
 
+        if (n.startsWith("git checkout -b ")) {
+            String name = command.substring("git checkout -b ".length()).trim();
+
+            if (branches.containsKey(name)) {
+                return Result.error("fatal: a branch named '" + name + "' already exists");
+            }
+
+            branches.put(name, branches.getOrDefault(headBranch, ""));
+            headBranch = name;
+            checkoutHeadSnapshot();
+
+            return Result.success("Switched to a new branch '" + name + "'");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -b ")) {
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git checkout -B ")) {
+            String name = command.substring("git checkout -B ".length()).trim();
+            branches.put(name, branches.getOrDefault(headBranch, ""));
+            headBranch = name;
+            checkoutHeadSnapshot();
+            return Result.success("Switched to and reset branch '" + name + "'");
+        }
+
+        if ("git checkout -".equals(n) || "git switch -".equals(n)) {
+            return Result.normal("Déplacement vers la branche précédente simulé.");
+        }
+
+        if (n.startsWith("git checkout -- ")) {
+            String path = command.substring("git checkout -- ".length()).trim();
+            return restoreFromHead(path);
+        }
+
+        if (n.startsWith("git checkout head -- ")) {
+            String path = command.substring(command.indexOf("--") + 2).trim();
+            return restoreFromHead(path);
+        }
+
+        if (n.startsWith("git checkout ") &&
+            !n.startsWith("git checkout --detach") &&
+            !n.contains(" -- ")) {
+
+            String name = command.substring("git checkout ".length()).trim();
+
+            if (branches.containsKey(name)) {
+                headBranch = name;
+                checkoutHeadSnapshot();
+                return Result.success("Switched to branch '" + name + "'");
+            }
+
+            Commit commit = findCommit(name);
+            if (commit != null) {
+                headSnapshot = new LinkedHashMap<>(commit.snapshot);
+                return Result.success("HEAD is now at " + commit.hash + " " + commit.message);
+            }
+
+            return Result.error("error: pathspec '" + name + "' did not match any branch or commit");
+        }
+
+        if (n.startsWith("git restore --staged ")) {
+            String path = command.substring("git restore --staged ".length()).trim();
+            staged.remove(path);
+            return Result.normal("");
+        }
+
+        if (n.startsWith("git restore ")) {
+            String path = command.substring("git restore ".length()).trim();
+
+            if (path.startsWith("--source=")) {
+                int space = path.indexOf(' ');
+                path = space < 0 ? "" : path.substring(space + 1).trim();
+            }
+
+            return restoreFromHead(path);
+        }
+
+        if (n.startsWith("git reset --hard")) {
+            checkoutHeadSnapshot();
+            staged.clear();
+            conflictActive = false;
+            return Result.success("HEAD is now at " + branches.getOrDefault(headBranch, ""));
+        }
+
+        if (n.startsWith("git reset --soft ") || n.startsWith("git reset --mixed ")) {
+            return Result.success("[simulation] HEAD déplacé ; working tree conservé.");
+        }
+
+        if (n.startsWith("git reset ")) {
+            String arg = command.substring("git reset ".length()).trim();
+
+            if ("HEAD".equalsIgnoreCase(arg)) {
+                staged.clear();
+                return Result.normal("Unstaged changes after reset.");
+            }
+
+            staged.remove(arg);
+            return Result.normal("Unstaged '" + arg + "'");
+        }
+
+        if ("git stash".equals(n) ||
+            "git stash push".equals(n) ||
+            n.startsWith("git stash push -m ")) {
+
+            stashSnapshots.add(new LinkedHashMap<>(files));
+            checkoutHeadSnapshot();
+            staged.clear();
+
+            return Result.success("Saved working directory and index state WIP on " + headBranch);
+        }
+
+        if ("git stash list".equals(n)) {
+            StringBuilder out = new StringBuilder();
+
+            for (int i = stashSnapshots.size() - 1, nstash = 0; i >= 0; i--, nstash++) {
+                out.append("stash@{")
+                    .append(nstash)
+                    .append("}: WIP on ")
+                    .append(headBranch)
+                    .append('\n');
+            }
+
+            return Result.normal(out.toString().trim());
+        }
+
+        if ("git stash pop".equals(n) || "git stash apply".equals(n)) {
+            if (stashSnapshots.isEmpty()) return Result.normal("No stash entries found.");
+
+            Map<String,String> snapshot = stashSnapshots.get(stashSnapshots.size() - 1);
+            files.clear();
+            files.putAll(snapshot);
+
+            if ("git stash pop".equals(n)) {
+                stashSnapshots.remove(stashSnapshots.size() - 1);
+            }
+
+            return Result.success("On branch " + headBranch + "\nChanges restored from stash.");
+        }
+
+        if ("git stash drop".equals(n)) {
+            if (!stashSnapshots.isEmpty()) {
+                stashSnapshots.remove(stashSnapshots.size() - 1);
+            }
+
+            return Result.success("Dropped refs/stash@{0}");
+        }
+
+        if ("git stash clear".equals(n)) {
+            stashSnapshots.clear();
+            return Result.normal("");
+        }
+
+        if ("git reflog".equals(n) || n.startsWith("git reflog -")) {
+            StringBuilder out = new StringBuilder();
+            List<Commit> list = new ArrayList<>(commits.values());
+            Collections.reverse(list);
+
+            int i = 0;
+            for (Commit commit : list) {
+                out.append(commit.hash)
+                    .append(" HEAD@{")
+                    .append(i++)
+                    .append("}: commit: ")
+                    .append(commit.message)
+                    .append('\n');
+            }
+
+            return Result.normal(out.toString().trim());
+        }
+
+        if ("git rev-parse --abbrev-ref HEAD".equals(n)) return Result.normal(headBranch);
+        if ("git rev-parse HEAD".equals(n)) return Result.normal(padHash(branches.getOrDefault(headBranch, "")));
+        if ("git rev-parse --show-toplevel".equals(n)) return Result.normal(repoRoot);
+
+        if (n.startsWith("git rm ")) {
+            String path = command.substring("git rm ".length())
+                .replace("--cached ", "")
+                .trim();
+
+            String absolute = repoRoot + "/" + path;
+
+            if (!command.contains("--cached")) {
+                files.remove(absolute);
+            }
+
+            staged.add(path);
+            return Result.normal("rm '" + path + "'");
+        }
+
+        if (n.startsWith("git mv ")) {
+            String[] args = command.substring("git mv ".length()).trim().split("\\s+");
+
+            if (args.length >= 2) {
+                Result moved = move(args[0] + " " + args[1]);
+
+                if (moved.kind != Kind.ERROR) {
+                    staged.add(args[0]);
+                    staged.add(args[1]);
+                }
+
+                return moved;
+            }
+        }
+
+        if (n.startsWith("git clean -n") || n.startsWith("git clean -nd")) {
+            StringBuilder out = new StringBuilder();
+
+            for (String path : repoFiles()) {
+                if (!headSnapshot.containsKey(path) && !staged.contains(path)) {
+                    out.append("Would remove ").append(path).append('\n');
+                }
+            }
+
+            return Result.normal(out.toString().trim());
+        }
+
+        if (n.startsWith("git clean -fd")) {
+            List<String> remove = new ArrayList<>();
+
+            for (String path : repoFiles()) {
+                if (!headSnapshot.containsKey(path) && !staged.contains(path)) {
+                    remove.add(path);
+                }
+            }
+
+            for (String path : remove) {
+                files.remove(repoRoot + "/" + path);
+            }
+
+            return Result.success("Removing " + remove.size() + " untracked path(s).");
+        }
+
+        if (n.startsWith("git merge ") && !"git merge --abort".equals(n)) {
+            String name = command.substring("git merge ".length())
+                .replace("--no-ff ", "")
+                .replace("--ff-only ", "")
+                .trim();
+
+            if (!branches.containsKey(name)) {
+                return Result.error("merge: " + name + " - not something we can merge");
+            }
+
+            String incoming = branches.get(name);
+            branches.put(headBranch, incoming);
+            checkoutHeadSnapshot();
+
+            return Result.success("Updating " + headBranch + ".." + incoming + "\nFast-forward");
+        }
+
+        if (n.startsWith("git cherry-pick ")) {
+            String ref = command.substring("git cherry-pick ".length())
+                .replace("--abort", "")
+                .trim();
+
+            if (ref.isEmpty()) {
+                return Result.success("[simulation] cherry-pick annulé.");
+            }
+
+            Commit original = findCommit(ref);
+            if (original == null) return Result.error("fatal: bad revision '" + ref + "'");
+
+            for (Map.Entry<String,String> entry : original.snapshot.entrySet()) {
+                files.put(repoRoot + "/" + entry.getKey(), entry.getValue());
+                staged.add(entry.getKey());
+            }
+
+            Commit copy = createCommit(original.message);
+
+            return Result.success("[" + headBranch + " " + copy.hash + "] " + copy.message);
+        }
+
+        if (n.startsWith("git revert ")) {
+            String ref = command.substring("git revert ".length())
+                .replace("--no-edit ", "")
+                .trim();
+
+            Commit original = findCommit(ref);
+            if (original == null) return Result.error("fatal: bad revision '" + ref + "'");
+
+            Commit revert = createCommit("Revert: " + original.message);
+
+            return Result.success("[" + headBranch + " " + revert.hash + "] " + revert.message);
+        }
+
+        if ("git status -s".equals(n) ||
+            "git status --short".equals(n) ||
+            "git status -sb".equals(n) ||
+            "git status --porcelain".equals(n)) {
+
+            return Result.normal(gitStatus().text);
+        }
+
+        if ("git remote".equals(n)) {
+            return Result.normal(remoteOrigin.isEmpty() ? "" : "origin");
+        }
+
+        if ("git remote show origin".equals(n)) {
+            return remoteOrigin.isEmpty()
+                ? Result.error("fatal: 'origin' does not appear to be a git repository")
+                : Result.normal(
+                    "* remote origin\n" +
+                    "  Fetch URL: " + remoteOrigin + "\n" +
+                    "  Push URL: " + remoteOrigin + "\n" +
+                    "  HEAD branch: main"
+                );
+        }
+
+        if (n.startsWith("git remote rename ")) {
+            return Result.success("[simulation] remote renommé.");
+        }
+
         if ("git remote -v".equals(n)) {
             if (remoteOrigin.isEmpty()) return Result.normal("");
 
