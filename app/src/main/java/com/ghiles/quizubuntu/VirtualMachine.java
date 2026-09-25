@@ -587,6 +587,434 @@ public final class VirtualMachine {
         );
     }
 
+    private Result executeExtendedShell(String command) {
+        String n = normalize(command);
+        String first = n.split("\\s+")[0];
+
+        if ("alias".equals(n)) {
+            StringBuilder out = new StringBuilder();
+            for (Map.Entry<String,String> entry : aliases.entrySet()) {
+                out.append("alias ")
+                    .append(entry.getKey())
+                    .append("='")
+                    .append(entry.getValue())
+                    .append("'\n");
+            }
+            return Result.normal(out.toString().trim());
+        }
+
+        if (n.startsWith("alias ") && command.contains("=")) {
+            String definition = command.substring(6).trim();
+            int eq = definition.indexOf('=');
+            if (eq > 0) {
+                String name = definition.substring(0, eq).trim();
+                String value = stripQuotes(definition.substring(eq + 1).trim());
+                aliases.put(name, value);
+                return Result.normal("");
+            }
+        }
+
+        if (n.startsWith("unalias ")) {
+            aliases.remove(command.substring(8).trim());
+            return Result.normal("");
+        }
+
+        if ("env".equals(n) || "printenv".equals(n) || "set".equals(n)) {
+            StringBuilder out = new StringBuilder();
+            for (Map.Entry<String,String> entry : environment.entrySet()) {
+                out.append(entry.getKey()).append("=").append(entry.getValue()).append('\n');
+            }
+            return Result.normal(out.toString().trim());
+        }
+
+        if (n.startsWith("printenv ")) {
+            String key = command.substring(9).trim();
+            return Result.normal(environment.getOrDefault(key, ""));
+        }
+
+        if (n.startsWith("export ")) {
+            String assignment = command.substring(7).trim();
+            int eq = assignment.indexOf('=');
+            if (eq > 0) {
+                environment.put(
+                    assignment.substring(0, eq).trim(),
+                    stripQuotes(assignment.substring(eq + 1).trim())
+                );
+                return Result.normal("");
+            }
+        }
+
+        if (n.startsWith("echo $")) {
+            String key = command.substring(6).trim();
+            return Result.normal(environment.getOrDefault(key, ""));
+        }
+
+        if (n.startsWith("printf ")) {
+            String value = stripQuotes(command.substring(7).trim())
+                .replace("\\n", "\n")
+                .replace("\\t", "\t");
+            return Result.normal(value);
+        }
+
+        if (n.startsWith("head ") || n.startsWith("tail ")) {
+            boolean head = n.startsWith("head ");
+            String[] parts = command.split("\\s+");
+            int count = 10;
+            String target = parts[parts.length - 1];
+
+            for (int i = 1; i < parts.length - 1; i++) {
+                if ("-n".equals(parts[i]) && i + 1 < parts.length) {
+                    try {
+                        count = Integer.parseInt(parts[i + 1]);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            String path = resolve(target);
+            if (!files.containsKey(path)) {
+                return Result.error(first + ": impossible d'ouvrir '" + target + "'");
+            }
+
+            String[] lines = files.get(path).split("\\n", -1);
+            StringBuilder out = new StringBuilder();
+
+            if (head) {
+                for (int i = 0; i < Math.min(count, lines.length); i++) {
+                    out.append(lines[i]).append('\n');
+                }
+            } else {
+                int start = Math.max(0, lines.length - count);
+                for (int i = start; i < lines.length; i++) {
+                    out.append(lines[i]).append('\n');
+                }
+            }
+
+            return Result.normal(out.toString().trim());
+        }
+
+        if (n.startsWith("wc ")) {
+            String[] parts = command.split("\\s+");
+            String target = parts[parts.length - 1];
+            String path = resolve(target);
+
+            if (!files.containsKey(path)) {
+                return Result.error("wc: " + target + ": Aucun fichier");
+            }
+
+            String value = files.get(path);
+            int lines = value.isEmpty() ? 0 : value.split("\\n", -1).length;
+            int words = value.trim().isEmpty() ? 0 : value.trim().split("\\s+").length;
+            int chars = value.length();
+
+            if (n.startsWith("wc -l")) return Result.normal(lines + " " + target);
+            if (n.startsWith("wc -w")) return Result.normal(words + " " + target);
+            if (n.startsWith("wc -c") || n.startsWith("wc -m")) return Result.normal(chars + " " + target);
+
+            return Result.normal(lines + " " + words + " " + chars + " " + target);
+        }
+
+        if (n.startsWith("grep ")) {
+            String[] parts = command.split("\\s+");
+            if (parts.length < 3) return Result.error("Usage: grep MOT FICHIER");
+
+            String pattern = stripQuotes(parts[parts.length - 2]);
+            String target = parts[parts.length - 1];
+            String path = resolve(target);
+
+            if (!files.containsKey(path)) {
+                return Result.error("grep: " + target + ": Aucun fichier");
+            }
+
+            boolean ignoreCase = n.contains(" -i ");
+            boolean invert = n.contains(" -v ");
+            boolean number = n.contains(" -n ");
+
+            StringBuilder out = new StringBuilder();
+            String[] lines = files.get(path).split("\\n", -1);
+
+            for (int i = 0; i < lines.length; i++) {
+                String hay = ignoreCase ? lines[i].toLowerCase(Locale.ROOT) : lines[i];
+                String needle = ignoreCase ? pattern.toLowerCase(Locale.ROOT) : pattern;
+                boolean match = hay.contains(needle);
+                if (invert) match = !match;
+
+                if (match) {
+                    if (number) out.append(i + 1).append(":");
+                    out.append(lines[i]).append('\n');
+                }
+            }
+
+            return Result.normal(out.toString().trim());
+        }
+
+        if (n.startsWith("find ")) {
+            StringBuilder out = new StringBuilder();
+            boolean wantFiles = n.contains("-type f");
+            boolean wantDirs = n.contains("-type d");
+            String namePattern = "";
+
+            int namePos = n.indexOf("-name ");
+            if (namePos >= 0) {
+                namePattern = stripQuotes(command.substring(namePos + 6).trim());
+            }
+
+            for (String dir : directories) {
+                if (dir.startsWith(cwd) && !wantFiles) {
+                    if (namePattern.isEmpty() || simpleGlob(namePattern, baseName(dir))) {
+                        out.append(displayRelative(dir)).append('\n');
+                    }
+                }
+            }
+
+            for (String file : files.keySet()) {
+                if (file.startsWith(cwd) && !wantDirs) {
+                    if (namePattern.isEmpty() || simpleGlob(namePattern, baseName(file))) {
+                        out.append(displayRelative(file)).append('\n');
+                    }
+                }
+            }
+
+            return Result.normal(out.toString().trim());
+        }
+
+        if (n.startsWith("which ") ||
+            n.startsWith("command -v ") ||
+            n.startsWith("whereis ") ||
+            n.startsWith("type ")) {
+
+            String name = command.substring(command.lastIndexOf(' ') + 1).trim();
+
+            if (aliases.containsKey(name)) {
+                return Result.normal(name + " is aliased to '" + aliases.get(name) + "'");
+            }
+
+            String desc = CommandCatalog.describe(name);
+            return desc.isEmpty()
+                ? Result.error(name + " not found")
+                : Result.normal("/usr/bin/" + name);
+        }
+
+        if (n.startsWith("basename ")) {
+            return Result.normal(baseName(resolve(command.substring(9).trim())));
+        }
+
+        if (n.startsWith("dirname ")) {
+            return Result.normal(parent(resolve(command.substring(8).trim())));
+        }
+
+        if ("realpath .".equals(n)) return Result.normal(cwd);
+
+        if (n.startsWith("file ")) {
+            String target = command.substring(5).trim();
+            String path = resolve(target);
+
+            if (directories.contains(path)) return Result.normal(target + ": directory");
+            if (files.containsKey(path)) return Result.normal(target + ": UTF-8 Unicode text");
+
+            return Result.error(target + ": cannot open");
+        }
+
+        if (n.startsWith("stat ")) {
+            String target = command.substring(5).trim();
+            String path = resolve(target);
+
+            if (directories.contains(path)) {
+                return Result.normal(
+                    "  Fichier : " + target +
+                    "\n  Type : dossier" +
+                    "\n  Accès : (0755/drwxr-xr-x)"
+                );
+            }
+
+            if (files.containsKey(path)) {
+                return Result.normal(
+                    "  Fichier : " + target +
+                    "\n  Taille : " + files.get(path).length() +
+                    "\n  Accès : (0644/-rw-r--r--)"
+                );
+            }
+
+            return Result.error("stat: impossible d'évaluer '" + target + "'");
+        }
+
+        if (n.startsWith("du")) return Result.normal("4.0K\t.");
+        if (n.startsWith("df")) {
+            return Result.normal(
+                "Sys. de fichiers Taille Utilisé Dispo Uti% Monté sur\n" +
+                "/dev/virtual       32G    4G   28G  13% /"
+            );
+        }
+
+        if ("lsblk".equals(n) || "lsblk -f".equals(n)) {
+            return Result.normal("NAME   SIZE TYPE MOUNTPOINT\nvda     32G disk /");
+        }
+
+        if (n.startsWith("chmod ") ||
+            n.startsWith("chown ") ||
+            n.startsWith("chgrp ") ||
+            n.startsWith("umask")) {
+
+            if ("umask".equals(n)) return Result.normal("0022");
+            return Result.success("[simulation] métadonnées mises à jour.");
+        }
+
+        if (n.startsWith("ln -s ")) {
+            String[] parts = command.substring(6).trim().split("\\s+");
+            if (parts.length >= 2) {
+                String destination = resolve(parts[1]);
+                files.put(destination, "-> " + parts[0]);
+                return Result.normal("");
+            }
+        }
+
+        if (n.startsWith("diff ")) {
+            String clean = command.replace("diff -u ", "diff ");
+            String[] parts = clean.substring(5).trim().split("\\s+");
+
+            if (parts.length >= 2) {
+                String a = files.getOrDefault(resolve(parts[0]), "");
+                String b = files.getOrDefault(resolve(parts[1]), "");
+
+                if (a.equals(b)) return Result.normal("");
+
+                return Result.normal(
+                    "--- " + parts[0] +
+                    "\n+++ " + parts[1] +
+                    "\n-" + firstLine(a) +
+                    "\n+" + firstLine(b)
+                );
+            }
+        }
+
+        if (n.startsWith("md5sum ") ||
+            n.startsWith("sha1sum ") ||
+            n.startsWith("sha256sum ") ||
+            n.startsWith("sha512sum ") ||
+            n.startsWith("cksum ")) {
+
+            String target = command.substring(command.indexOf(' ') + 1).trim();
+            String content = files.getOrDefault(resolve(target), "");
+
+            long hash = 1125899906842597L;
+            for (char c : content.toCharArray()) hash = 31 * hash + c;
+
+            return Result.normal(Long.toHexString(hash) + "  " + target);
+        }
+
+        if ("groups".equals(n)) return Result.normal("ubuntu adm sudo");
+        if ("users".equals(n)) return Result.normal("ubuntu");
+        if ("who".equals(n)) return Result.normal("ubuntu   pts/0   2026-09-25 18:00");
+        if ("w".equals(n)) return Result.normal("ubuntu   pts/0   bash");
+        if ("hostname -f".equals(n)) return Result.normal("academy.local");
+        if ("hostnamectl".equals(n)) {
+            return Result.normal(
+                "Static hostname: academy\n" +
+                "Operating System: Ubuntu 24.04 LTS\n" +
+                "Kernel: Linux 6.8.0-sim"
+            );
+        }
+        if ("uname -r".equals(n)) return Result.normal("6.8.0-sim");
+        if (n.startsWith("uptime")) return Result.normal("18:00:00 up 1 day, 2:14, 1 user, load average: 0.08, 0.06, 0.05");
+        if (n.startsWith("free")) return Result.normal("               total        used        free\nMem:           7.8Gi       2.1Gi       5.7Gi");
+        if (n.startsWith("cal")) return Result.normal("   septembre 2026\nlu ma me je ve sa di\n       1  2  3  4  5  6");
+        if ("lscpu".equals(n)) return Result.normal("Architecture: aarch64\nCPU(s): 8\nModèle: Ubuntu Lab Virtual CPU");
+        if ("lsmem".equals(n)) return Result.normal("RANGE                                  SIZE  STATE\n0x0000000000000000-0x00000001ffffffff   8G online");
+
+        if (n.startsWith("ps")) return Result.normal("  PID TTY          TIME CMD\n 1234 pts/0    00:00:00 bash\n 1250 pts/0    00:00:00 ps");
+        if (n.startsWith("pgrep ")) return Result.normal("1234");
+        if (n.startsWith("pidof ")) return Result.normal("1234");
+        if ("top".equals(n)) return Result.normal("top - Ubuntu Lab simulation\nTasks: 4 total, 1 running\n%Cpu(s): 2.0 us, 98.0 id");
+
+        if (n.startsWith("kill ") ||
+            n.startsWith("pkill ") ||
+            n.startsWith("nice ") ||
+            n.startsWith("renice ")) {
+
+            return Result.success("[simulation] signal/priority appliqué.");
+        }
+
+        if (n.startsWith("ip addr") || n.startsWith("ip -br addr")) {
+            return Result.normal("lo       UNKNOWN 127.0.0.1/8\nwlan0    UP      192.168.1.42/24");
+        }
+        if (n.startsWith("ip link")) return Result.normal("1: lo: <LOOPBACK,UP>\n2: wlan0: <BROADCAST,MULTICAST,UP>");
+        if (n.startsWith("ip route")) return Result.normal("default via 192.168.1.1 dev wlan0");
+        if (n.startsWith("ss")) return Result.normal("Netid State  Local Address:Port Peer Address:Port\ntcp   LISTEN 127.0.0.1:22      0.0.0.0:*");
+        if (n.startsWith("ping ")) return Result.normal("64 bytes from github.com: icmp_seq=1 ttl=54 time=18.4 ms\n--- ping statistics ---\n1 packets transmitted, 1 received");
+        if (n.startsWith("curl ")) return Result.normal("[simulation réseau] HTTP/2 200\ncontent-type: text/html");
+        if (n.startsWith("wget ")) return Result.success("[simulation réseau] fichier téléchargé.");
+        if (n.startsWith("getent hosts ")) return Result.normal("140.82.121.4   github.com");
+        if ("resolvectl status".equals(n)) return Result.normal("Global\n       Protocols: -LLMNR -mDNS\nCurrent DNS Server: 1.1.1.1");
+
+        if (n.startsWith("apt ") || n.startsWith("dpkg ")) {
+            if (n.startsWith("apt install ") ||
+                n.startsWith("apt remove ") ||
+                n.startsWith("apt upgrade") ||
+                n.startsWith("apt update")) {
+
+                return Result.success(
+                    "[simulation] gestionnaire de paquets Ubuntu : aucune modification réelle du téléphone."
+                );
+            }
+
+            return Result.normal(
+                "[simulation] paquet Git/Ubuntu disponible dans le catalogue pédagogique."
+            );
+        }
+
+        if (n.startsWith("systemctl ")) {
+            return Result.normal("[simulation] service ssh.service : active (running)");
+        }
+
+        if (n.startsWith("journalctl")) {
+            return Result.normal("Sep 25 18:00:00 academy systemd[1]: Ubuntu Lab journal simulé");
+        }
+
+        if (n.startsWith("tar ") ||
+            n.startsWith("gzip ") ||
+            n.startsWith("gunzip ") ||
+            n.startsWith("zip ") ||
+            n.startsWith("unzip ")) {
+
+            return Result.success("[simulation] opération d'archive terminée.");
+        }
+
+        if ("jobs".equals(n) || "jobs -l".equals(n)) return Result.normal("[1]+  Running                 demo &");
+        if ("bg".equals(n)) return Result.normal("[1]+ demo &");
+        if ("fg".equals(n)) return Result.normal("demo");
+        if (n.startsWith("sleep ")) return Result.normal("");
+        if ("true".equals(n)) return Result.normal("");
+        if ("false".equals(n)) return Result.error("");
+
+        String catalog = CommandCatalog.describe(command);
+        if (!catalog.isEmpty()) {
+            return Result.normal("[simulation documentaire] " + catalog);
+        }
+
+        return null;
+    }
+
+    private boolean simpleGlob(String pattern, String value) {
+        String regex = pattern
+            .replace(".", "\\.")
+            .replace("*", ".*")
+            .replace("?", ".");
+
+        return value.matches(regex);
+    }
+
+    private String baseName(String path) {
+        if (path == null || path.isEmpty() || "/".equals(path)) return path;
+        int i = path.lastIndexOf('/');
+        return i < 0 ? path : path.substring(i + 1);
+    }
+
+    private String displayRelative(String path) {
+        if (path.equals(cwd)) return ".";
+        if (path.startsWith(cwd + "/")) return "." + path.substring(cwd.length());
+        return path;
+    }
+
     private Result executeGit(String command) {
         String n = normalize(command);
 
