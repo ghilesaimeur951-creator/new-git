@@ -1,5 +1,22 @@
 # Ubuntu & Git Academy
 
+## Version 4.3 — terminal direct et catalogue étendu
+
+Cette version agrandit fortement Ubuntu Lab.
+
+- saisie directement dans la ligne de prompt du terminal, par exemple `ubuntu@academy:~/Projets$ commande`
+- champ de saisie plus grand, monospace, intégré visuellement au terminal
+- bouton Entrée compact et historique ↑ / ↓
+- navigation par rubriques via le menu ☰
+- catalogue recherchable de **784 signatures et exemples de commandes**
+- `help mot`, `apropos mot`, `man mot` et `compgen -c`
+- ajout de nombreuses familles Ubuntu : recherche, texte, permissions, processus, archives, réseau, paquets, services, hachage et diagnostics
+- ajout de commandes Git voisines : `git checkout`, `git checkout -b`, `git restore`, `git reset`, `git stash`, `git reflog`, `git merge`, `git cherry-pick`, `git revert`, `git clean`, `git rm`, `git mv`, etc.
+- `git checkout` est aussi pris en charge dans le mode GitHub réel
+- les commandes principales de la formation restent stateful ; les variantes plus avancées non modélisées en profondeur produisent une réponse clairement marquée comme simulation documentaire
+
+Le catalogue V4.3 étend volontairement le périmètre au-delà des PDF de cours avec des commandes Ubuntu/Git apparentées. Les commandes du cours restent la base pédagogique prioritaire.
+
 ## Version 4.1 — clavier mobile
 
 - la barre de commande complète reste au-dessus du clavier Android ;
