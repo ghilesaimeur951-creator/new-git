@@ -556,7 +556,7 @@ public final class RealGitClient {
         String push = repository.getConfig().getString(
             ConfigConstants.CONFIG_REMOTE_SECTION,
             "origin",
-            ConfigConstants.CONFIG_KEY_PUSHURL
+            "pushurl"
         );
 
         if (push == null || push.isEmpty()) push = url;
