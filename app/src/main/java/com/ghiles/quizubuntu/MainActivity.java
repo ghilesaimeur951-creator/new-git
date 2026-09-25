@@ -239,6 +239,7 @@ public class MainActivity extends Activity {
     private boolean answered = false;
     private boolean reviewMode = false;
     private boolean customMode = false;
+    private boolean examMode = false;
     private String customModeTitle = "";
 
     private TextView categoryView;
@@ -338,6 +339,10 @@ public class MainActivity extends Activity {
         quick.setOnClickListener(v -> startQuickQuiz());
         root.addView(quick);
 
+        Button exam = secondaryFullButton("Mode examen — 20 questions");
+        exam.setOnClickListener(v -> startExam());
+        root.addView(exam);
+
         Button adaptive = secondaryFullButton("Entraînement adaptatif");
         adaptive.setOnClickListener(v -> startAdaptiveQuiz());
         root.addView(adaptive);
@@ -420,6 +425,7 @@ public class MainActivity extends Activity {
     private void startLevel(int level) {
         reviewMode = false;
         customMode = false;
+        examMode = false;
         customModeTitle = "";
         activeLevel = level;
         quiz = new ArrayList<>();
@@ -448,6 +454,7 @@ public class MainActivity extends Activity {
         Collections.shuffle(quiz);
         reviewMode = true;
         customMode = false;
+        examMode = false;
         customModeTitle = "RÉVISION DES ERREURS";
         activeLevel = 0;
         currentIndex = 0;
@@ -536,7 +543,7 @@ public class MainActivity extends Activity {
 
         categoryView.setText(q.category + "  •  difficulté " + q.level);
         progressView.setText("Question " + (currentIndex + 1) + " / " + quiz.size() +
-                "   •   Bonnes réponses : " + correctCount);
+                (examMode ? "   •   correction à la fin" : "   •   Bonnes réponses : " + correctCount));
         pointsView.setText("+" + sessionPoints + " pts cette session   •   Série " + streak);
         questionView.setText(q.text);
         illustrationView.setCategory(q.category);
@@ -563,6 +570,36 @@ public class MainActivity extends Activity {
         recordCategoryResult(q.category, isCorrect);
         if (index >= 0 && index < optionButtons.size()) {
             optionButtons.get(index).performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+        }
+
+        if (examMode) {
+            Set<String> examWrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
+            int answeredTotalExam = prefs.getInt("answeredTotal", 0) + 1;
+            int correctTotalExam = prefs.getInt("correctTotal", 0);
+
+            if (isCorrect) {
+                correctCount++;
+                correctTotalExam++;
+                examWrong.remove(q.text);
+            } else {
+                examWrong.add(q.text);
+                String mistakeKey = "mistake_" + Math.abs(q.text.hashCode());
+                prefs.edit().putInt(mistakeKey, prefs.getInt(mistakeKey, 0) + 1).apply();
+            }
+
+            prefs.edit()
+                .putInt("answeredTotal", answeredTotalExam)
+                .putInt("correctTotal", correctTotalExam)
+                .putStringSet("wrongQuestions", examWrong)
+                .apply();
+
+            if (currentIndex < quiz.size() - 1) {
+                currentIndex++;
+                renderQuestion();
+            } else {
+                finishLevel();
+            }
+            return;
         }
 
         Set<String> wrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
@@ -693,6 +730,7 @@ public class MainActivity extends Activity {
                 (customMode ? "Nouvelle session" : "Rejouer ce niveau"));
         replay.setOnClickListener(v -> {
             if (reviewMode) startReviewErrors();
+            else if (customMode && examMode) startExam();
             else if (customMode) startQuickQuiz();
             else startLevel(activeLevel);
         });
@@ -715,7 +753,24 @@ public class MainActivity extends Activity {
         quiz = new ArrayList<>(pool.subList(0, Math.min(10, pool.size())));
         reviewMode = false;
         customMode = true;
+        examMode = false;
         customModeTitle = "QUIZ RAPIDE";
+        activeLevel = 0;
+        currentIndex = 0;
+        correctCount = 0;
+        sessionPoints = 0;
+        streak = 0;
+        showQuizScreen();
+    }
+
+    private void startExam() {
+        List<Question> pool = new ArrayList<>(questions);
+        Collections.shuffle(pool);
+        quiz = new ArrayList<>(pool.subList(0, Math.min(20, pool.size())));
+        reviewMode = false;
+        customMode = true;
+        examMode = true;
+        customModeTitle = "MODE EXAMEN";
         activeLevel = 0;
         currentIndex = 0;
         correctCount = 0;
@@ -738,6 +793,7 @@ public class MainActivity extends Activity {
         quiz = pool;
         reviewMode = false;
         customMode = true;
+        examMode = false;
         customModeTitle = "ENTRAÎNEMENT ADAPTATIF";
         activeLevel = 0;
         currentIndex = 0;
@@ -774,6 +830,7 @@ public class MainActivity extends Activity {
         Collections.shuffle(quiz);
         reviewMode = false;
         customMode = true;
+        examMode = false;
         customModeTitle = "THÈME : " + category.toUpperCase(Locale.ROOT);
         activeLevel = 0;
         currentIndex = 0;
