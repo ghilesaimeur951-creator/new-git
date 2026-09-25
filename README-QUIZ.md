@@ -1,5 +1,13 @@
 # Ubuntu & Git Academy
 
+## Version 4.1 — clavier mobile
+
+- la barre de commande complète reste au-dessus du clavier Android ;
+- le prompt, le champ de saisie et le bouton **Exécuter** ne peuvent plus être recouverts par l'IME ;
+- gestion explicite des insets clavier sur Android 11+ et Android 15 edge-to-edge ;
+- fallback de positionnement pour certains claviers constructeurs qui superposent encore l'application ;
+- scroll automatique vers les dernières lignes quand le clavier s'ouvre.
+
 Application Android d'apprentissage de Bash/Ubuntu, Git, GitHub, SSH, branches, synchronisation, merge et conflits, construite à partir des supports de cours du projet.
 
 ## Version 4.0 — Ubuntu Lab
