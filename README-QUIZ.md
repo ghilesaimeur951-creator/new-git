@@ -2,6 +2,23 @@
 
 Application Android de révision et de pratique basée sur les supports de cours fournis : Bash/Ubuntu, Git, branches, GitHub/SSH, synchronisation et conflits.
 
+## Version 3.2 — Ubuntu Lab libre
+
+Cette mise à jour améliore fortement le laboratoire Ubuntu :
+
+- barre de saisie fixée en bas de l'écran, au-dessus du clavier Android
+- le clavier redimensionne l'écran au lieu de masquer le champ de commande
+- recentrage automatique du terminal quand le champ reçoit le focus
+- deux modes séparés : **Missions guidées** et **Terminal libre**
+- en missions guidées : choix entre 4 propositions ou saisie manuelle de la commande
+- en terminal libre : possibilité de taper librement des commandes simulées
+- commandes Bash simulées supplémentaires : `whoami`, `hostname`, `uname`, `date`, `id`, `cp`, `mv`, `rm`, `rmdir`, `nano`, `history`, `clear`
+- commandes Git supplémentaires : `git --version`, `git branch`, `git switch`, `git fetch`, plusieurs formes de `git push`
+- enchaînement simple avec `&&`
+- commande `help` pour afficher les commandes disponibles
+
+Le terminal reste un **simulateur pédagogique** : il n'exécute jamais de commande réelle sur Android.
+
 ## Version 3.1 — Safe Area mobile
 
 Cette mise à jour améliore l'utilisation sur téléphone :
