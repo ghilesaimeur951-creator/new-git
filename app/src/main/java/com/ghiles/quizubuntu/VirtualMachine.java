@@ -114,6 +114,7 @@ public final class VirtualMachine {
     private boolean gitInitialized = false;
     private String repoRoot = "";
     private String headBranch = "main";
+    private String previousBranch = "main";
     private final Map<String,String> branches = new LinkedHashMap<>();
     private final Map<String,Commit> commits = new LinkedHashMap<>();
     private final Set<String> staged = new LinkedHashSet<>();
@@ -176,6 +177,7 @@ public final class VirtualMachine {
         gitInitialized = false;
         repoRoot = "";
         headBranch = "main";
+        previousBranch = "main";
         branches.clear();
         commits.clear();
         staged.clear();
@@ -1215,9 +1217,26 @@ public final class VirtualMachine {
         if (command.startsWith("git switch -C ")) {
             String name = command.substring("git switch -C ".length()).trim();
             branches.put(name, branches.getOrDefault(headBranch, ""));
+            previousBranch = headBranch;
             headBranch = name;
             checkoutHeadSnapshot();
             return Result.success("Switched to and reset branch '" + name + "'");
+        }
+
+        if ("git switch -".equals(n)) {
+            if (previousBranch == null ||
+                previousBranch.isEmpty() ||
+                !branches.containsKey(previousBranch)) {
+
+                return Result.error("fatal: no previous branch");
+            }
+
+            String next = previousBranch;
+            previousBranch = headBranch;
+            headBranch = next;
+            checkoutHeadSnapshot();
+
+            return Result.success("Switched to branch '" + headBranch + "'");
         }
 
         if (n.startsWith("git switch -c ")) {
@@ -1230,6 +1249,7 @@ public final class VirtualMachine {
             }
 
             branches.put(name, branches.getOrDefault(headBranch, ""));
+            previousBranch = headBranch;
             headBranch = name;
 
             return Result.success(
@@ -1246,6 +1266,7 @@ public final class VirtualMachine {
                 );
             }
 
+            previousBranch = headBranch;
             headBranch = name;
             checkoutHeadSnapshot();
 
@@ -1268,6 +1289,7 @@ public final class VirtualMachine {
             }
 
             branches.put(name, branches.getOrDefault(headBranch, ""));
+            previousBranch = headBranch;
             headBranch = name;
             checkoutHeadSnapshot();
 
@@ -1293,8 +1315,20 @@ public final class VirtualMachine {
                 : Result.success("HEAD is now detached at " + commit.hash + " " + commit.message);
         }
 
-        if ("git checkout -".equals(n) || "git switch -".equals(n)) {
-            return Result.normal("Déplacement vers la branche précédente simulé.");
+        if ("git checkout -".equals(n)) {
+            if (previousBranch == null ||
+                previousBranch.isEmpty() ||
+                !branches.containsKey(previousBranch)) {
+
+                return Result.error("fatal: no previous branch");
+            }
+
+            String next = previousBranch;
+            previousBranch = headBranch;
+            headBranch = next;
+            checkoutHeadSnapshot();
+
+            return Result.success("Switched to branch '" + headBranch + "'");
         }
 
         if (n.startsWith("git checkout -- ")) {
@@ -1314,6 +1348,7 @@ public final class VirtualMachine {
             String name = command.substring("git checkout ".length()).trim();
 
             if (branches.containsKey(name)) {
+                previousBranch = headBranch;
                 headBranch = name;
                 checkoutHeadSnapshot();
                 return Result.success("Switched to branch '" + name + "'");
