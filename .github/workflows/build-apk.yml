@@ -38,6 +38,9 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Run Ubuntu Lab command tests
+        run: gradle --stacktrace :app:testDebugUnitTest
+
       - name: Build debug APK
         run: gradle --stacktrace :app:assembleDebug
 
