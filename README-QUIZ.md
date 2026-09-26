@@ -1,5 +1,35 @@
 # Ubuntu & Git Academy
 
+## Version 4.4 — audit 250 commandes et SSH réel
+
+Cette version met l'accent sur la fiabilité du terminal libre.
+
+- batterie automatisée de **250 commandes prioritaires** exécutée avant chaque APK ;
+- le build s'arrête si une commande prioritaire plante, devient inconnue, non prise en charge ou retombe sur le fallback documentaire ;
+- scénarios dédiés pour Bash stateful, branches + `git checkout`, remote/push, conflits/merge et SSH ;
+- smoke test supplémentaire sur le catalogue complet ;
+- fichier `COMMAND-AUDIT-250.md` avec la liste exacte des commandes auditées ;
+- artifact CI `ubuntu-lab-test-report` contenant les résultats JUnit ;
+- correction du routage qui pouvait envoyer une vraie commande Git/SSH vers le fallback documentaire ;
+- meilleure gestion de `HEAD`, `git rev-parse`, `checkout`, `restore`, `reset`, `stash`, `merge` et commandes voisines.
+
+### SSH réel GitHub
+
+Le mode GitHub réel peut maintenant générer une paire de clés SSH directement dans l'application.
+
+- Ed25519 est utilisé lorsque le fournisseur cryptographique Android le permet ;
+- un fallback RSA 3072 est utilisé sur un appareil ne proposant pas Ed25519 ;
+- la clé privée n'est jamais affichée et n'est jamais conservée en clair ;
+- les octets PKCS#8 privés sont chiffrés en AES/GCM avec une clé protégée par Android Keystore ;
+- la clé publique et son empreinte SHA256 peuvent être affichées/copées ;
+- avec une connexion GitHub dont le token possède la permission utilisateur **Git SSH keys: write**, l'application peut ajouter la clé publique au compte GitHub via l'API ;
+- le transport Git réel peut être basculé entre HTTPS et SSH ;
+- JGit utilise le transport SSH Apache MINA et une liste `known_hosts` construite depuis les clés hôtes publiées par l'API GitHub ;
+- `git clone`, `git fetch`, `git pull`, `git push` et `git ls-remote` utilisent alors réellement SSH ;
+- `ssh -T git@github.com` est vérifié dans l'application en ouvrant réellement un accès Git au dépôt sélectionné via SSH, sans prétendre fournir un shell GitHub.
+
+Le mode simulation continue d'imiter les commandes SSH du support sans exposer ni utiliser la clé réelle.
+
 ## Version 4.3 — terminal direct et catalogue étendu
 
 Cette version agrandit fortement Ubuntu Lab.
