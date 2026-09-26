@@ -112,6 +112,25 @@ public class VirtualMachine250CommandTest {
                 "A top-250 command must have behavior, not documentary fallback: " + command + " -> " + result.text,
                 text.contains("simulation documentaire")
             );
+
+            boolean expectedError =
+                "false".equals(command) ||
+                command.startsWith("git remote add origin ") ||
+                "git merge --abort".equals(command);
+
+            if (expectedError) {
+                assertEquals(
+                    "Expected a realistic error state for: " + command + " -> " + result.text,
+                    VirtualMachine.Kind.ERROR,
+                    result.kind
+                );
+            } else {
+                assertNotEquals(
+                    "Unexpected error for: " + command + " -> " + result.text,
+                    VirtualMachine.Kind.ERROR,
+                    result.kind
+                );
+            }
         }
     }
 
@@ -165,6 +184,11 @@ public class VirtualMachine250CommandTest {
         vm.execute("git commit -m \"cheese\"");
 
         assertTrue(vm.execute("git checkout main").text.contains("main"));
+        assertTrue(vm.execute("git branch").text.contains("* main"));
+
+        vm.execute("git branch -m trunk");
+        assertTrue(vm.execute("git branch").text.contains("* trunk"));
+        vm.execute("git branch -M main");
         assertTrue(vm.execute("git branch").text.contains("* main"));
 
         VirtualMachine.Result merge = vm.execute("git merge cheese");
