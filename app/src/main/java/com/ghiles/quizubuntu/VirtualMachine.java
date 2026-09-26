@@ -1433,8 +1433,8 @@ public final class VirtualMachine {
             return Result.normal(out.toString().trim());
         }
 
-        if ("git rev-parse --abbrev-ref HEAD".equals(n)) return Result.normal(headBranch);
-        if ("git rev-parse HEAD".equals(n)) return Result.normal(padHash(branches.getOrDefault(headBranch, "")));
+        if ("git rev-parse --abbrev-ref head".equals(n)) return Result.normal(headBranch);
+        if ("git rev-parse head".equals(n)) return Result.normal(padHash(branches.getOrDefault(headBranch, "")));
         if ("git rev-parse --show-toplevel".equals(n)) return Result.normal(repoRoot);
 
         if (n.startsWith("git rm ")) {
@@ -2508,6 +2508,13 @@ public final class VirtualMachine {
     }
 
     private Commit findCommit(String ref) {
+        if (ref == null || ref.trim().isEmpty()) return null;
+
+        if ("HEAD".equalsIgnoreCase(ref)) {
+            String head = branches.getOrDefault(headBranch, "");
+            return commits.get(head);
+        }
+
         if (commits.containsKey(ref)) return commits.get(ref);
 
         for (Commit commit : commits.values()) {
