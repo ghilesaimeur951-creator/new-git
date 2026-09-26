@@ -370,11 +370,14 @@ public final class VirtualMachine {
             );
         }
 
-        if ("ls".equals(n)) return list(false, false);
-        if ("ls -l".equals(n)) return list(true, false);
-        if ("ls -la".equals(n) || "ls -al".equals(n)) return list(true, true);
         if ("ls -al ~/.ssh".equals(n) || "ls -la ~/.ssh".equals(n)) {
             return listSsh();
+        }
+
+        if ("ls".equals(n) || n.startsWith("ls -")) {
+            boolean longFormat = n.contains("l");
+            boolean showHidden = n.contains("a") || n.contains("A");
+            return list(longFormat, showHidden);
         }
 
         if ("cd".equals(n) || "cd ~".equals(n)) {
@@ -453,6 +456,14 @@ public final class VirtualMachine {
 
             files.putIfAbsent(path, "");
             return Result.normal("");
+        }
+
+        if ("cat -a ~/.ssh/id_ed25519.pub".equals(n)) {
+            return sshPrivateKeyExists
+                ? Result.normal("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... student@example.com$")
+                : Result.error(
+                    "cat: /home/ubuntu/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type"
+                );
         }
 
         if (n.startsWith("cat ")) {
@@ -544,14 +555,6 @@ public final class VirtualMachine {
             return Result.normal("");
         }
 
-        if ("cat -a ~/.ssh/id_ed25519.pub".equals(n)) {
-            return sshPrivateKeyExists
-                ? Result.normal("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... student@example.com$")
-                : Result.error(
-                    "cat: /home/ubuntu/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type"
-                );
-        }
-
         if ("xclip -selection clipboard < ~/.ssh/id_ed25519.pub".equals(n)) {
             return sshPrivateKeyExists
                 ? Result.success("[simulation] clé publique copiée dans le presse-papiers X11.")
@@ -564,9 +567,6 @@ public final class VirtualMachine {
                 : Result.error("bash: ~/.ssh/id_ed25519.pub: Aucun fichier ou dossier de ce type");
         }
 
-        Result extended = executeExtendedShell(command);
-        if (extended != null) return extended;
-
         if (n.startsWith("git ") || "gh auth login".equals(n)) {
             return executeGit(command);
         }
@@ -577,6 +577,9 @@ public final class VirtualMachine {
             n.startsWith("eval ")) {
             return executeSsh(command);
         }
+
+        Result extended = executeExtendedShell(command);
+        if (extended != null) return extended;
 
         return Result.error(
             command.split("\\s+")[0] +
@@ -2202,9 +2205,16 @@ public final class VirtualMachine {
             return Result.normal("");
         }
 
-        return Result.normal(
-            stripQuotes(command.substring(5).trim())
-        );
+        String value = stripQuotes(command.substring(5).trim());
+
+        if (value.startsWith("$") && value.length() > 1) {
+            String key = value.substring(1);
+            if (environment.containsKey(key)) {
+                value = environment.get(key);
+            }
+        }
+
+        return Result.normal(value);
     }
 
     private Result copyFile(String argsText) {
