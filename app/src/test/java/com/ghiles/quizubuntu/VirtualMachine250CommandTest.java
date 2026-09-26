@@ -313,6 +313,7 @@ public class VirtualMachine250CommandTest {
         vm.execute("mkdir src");
         vm.execute("mkdir empty");
         vm.execute("touch src/App.java");
+        vm.execute("cp -r src src-copy");
         vm.execute("touch README.md");
         vm.execute("echo Base > README.md");
         vm.execute("touch notes.txt");
