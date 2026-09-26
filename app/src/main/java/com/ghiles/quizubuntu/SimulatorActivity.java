@@ -659,6 +659,39 @@ public class SimulatorActivity extends Activity {
         second.addView(disconnect, dp);
 
         realControls.addView(second);
+
+        LinearLayout sshRow = new LinearLayout(this);
+        sshRow.setOrientation(LinearLayout.HORIZONTAL);
+        sshRow.setPadding(0, dp(6), 0, 0);
+
+        Button generateSsh = smallButton("Créer clé SSH");
+        generateSsh.setOnClickListener(v -> generateRealSshKey());
+        sshRow.addView(
+            generateSsh,
+            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        );
+
+        Button uploadSsh = smallButton("Ajouter à GitHub");
+        uploadSsh.setOnClickListener(v -> uploadRealSshKey());
+        LinearLayout.LayoutParams uploadParams = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        uploadParams.leftMargin = dp(5);
+        sshRow.addView(uploadSsh, uploadParams);
+
+        Button transport = smallButton("HTTPS ↔ SSH");
+        transport.setOnClickListener(v -> toggleRealGitTransport());
+        LinearLayout.LayoutParams transportParams = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        transportParams.leftMargin = dp(5);
+        sshRow.addView(transport, transportParams);
+
+        realControls.addView(sshRow);
         root.addView(realControls, topMargin(5));
     }
 
@@ -1457,15 +1490,19 @@ public class SimulatorActivity extends Activity {
     }
 
     private void runRealCommandAsync(String command) {
-        if (!tokenStore.hasToken() &&
-            needsNetworkCredentials(command)) {
+        if (needsNetworkCredentials(command)) {
+            boolean sshReady =
+                realGit.isUseSsh() &&
+                realGit.sshKeyStore().hasKey();
 
-            appendPlain(
-                "GitHub réel : connecte d'abord ton compte avec « Connexion GitHub ».\n",
-                ERROR_RED
-            );
-            refreshTerminal();
-            return;
+            if (!sshReady && !tokenStore.hasToken()) {
+                appendPlain(
+                    "GitHub réel : connecte ton compte HTTPS ou configure une clé SSH réelle.\n",
+                    ERROR_RED
+                );
+                refreshTerminal();
+                return;
+            }
         }
 
         appendPlain("[réel] exécution…\n", Color.rgb(238,176,96));
@@ -1584,7 +1621,8 @@ public class SimulatorActivity extends Activity {
         TextView info = terminalText(
             "Utilise un jeton GitHub à permissions fines. " +
             "Le jeton est chiffré par Android Keystore et n'est jamais enregistré dans le code source.\n\n" +
-            "Pour pull : Contents en lecture. Pour push : Contents en lecture/écriture.",
+            "Pour pull : Contents en lecture. Pour push : Contents en lecture/écriture. " +
+            "Pour ajouter automatiquement la clé SSH : permission utilisateur Git SSH keys en écriture.",
             12,
             false,
             Color.rgb(45,45,49)
@@ -1865,13 +1903,201 @@ public class SimulatorActivity extends Activity {
             text.append("\nbranche locale : ").append(branch);
         }
 
-        text.append("\nmode réseau : HTTPS/JGit");
+        text.append("\ntransport Git : ")
+            .append(realGit.isUseSsh() ? "SSH/JGit" : "HTTPS/JGit");
+
+        if (realGit.sshKeyStore().hasKey()) {
+            RealSshKeyStore.KeyInfo key = realGit.sshKeyStore().info();
+            text.append("\nclé SSH : ")
+                .append(key.algorithm)
+                .append(" • ")
+                .append(key.fingerprint);
+        } else {
+            text.append("\nclé SSH : non créée");
+        }
 
         realStatusView.setText(text.toString());
         scoreView.setText(
             "GITHUB RÉEL  •  " +
             (repo.isEmpty() ? "aucun origin" : repo)
         );
+    }
+
+    private void generateRealSshKey() {
+        String login = prefs.getString("realGitHubLogin", "");
+        String comment = login.isEmpty()
+            ? "ubuntu-git-academy"
+            : login + "@ubuntu-git-academy";
+
+        appendPlain("[réel] génération d'une clé SSH…\n", Color.rgb(238,176,96));
+        refreshTerminal();
+
+        executor.submit(() -> {
+            try {
+                RealSshKeyStore.KeyInfo info =
+                    realGit.sshKeyStore().generate(comment);
+
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Clé SSH réelle créée : " +
+                        info.algorithm +
+                        "\n" +
+                        info.fingerprint +
+                        "\n",
+                        SUCCESS_GREEN
+                    );
+
+                    showPublicSshKey(info);
+                    refreshRealStatusTextOnly();
+                    refreshTerminal();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Création SSH échouée : " + safeMessage(e) + "\n",
+                        ERROR_RED
+                    );
+                    refreshTerminal();
+                });
+            }
+        });
+    }
+
+    private void showPublicSshKey(RealSshKeyStore.KeyInfo info) {
+        TextView keyView = new TextView(this);
+        keyView.setTypeface(Typeface.MONOSPACE);
+        keyView.setTextSize(11f);
+        keyView.setTextColor(Color.rgb(30,30,34));
+        keyView.setTextIsSelectable(true);
+        keyView.setPadding(dp(16), dp(10), dp(16), dp(10));
+        keyView.setText(
+            info.publicKey +
+            "\n\nEmpreinte : " +
+            info.fingerprint +
+            "\n\nLa clé privée reste chiffrée dans l'application et n'est jamais affichée."
+        );
+
+        new AlertDialog.Builder(this)
+            .setTitle("Clé publique SSH")
+            .setView(keyView)
+            .setNegativeButton("Fermer", null)
+            .setNeutralButton("Copier", (dialog, which) -> {
+                ClipboardManager manager =
+                    (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+
+                manager.setPrimaryClip(
+                    ClipData.newPlainText(
+                        "GitHub SSH public key",
+                        info.publicKey
+                    )
+                );
+            })
+            .setPositiveButton(
+                "Ajouter à GitHub",
+                (dialog, which) -> uploadRealSshKey()
+            )
+            .show();
+    }
+
+    private void uploadRealSshKey() {
+        if (!realGit.sshKeyStore().hasKey()) {
+            appendPlain(
+                "Crée d'abord une clé SSH réelle.\n",
+                ERROR_RED
+            );
+            refreshTerminal();
+            return;
+        }
+
+        if (!tokenStore.hasToken()) {
+            appendPlain(
+                "L'ajout automatique de la clé SSH nécessite une connexion GitHub avec la permission « Git SSH keys: write ».\n",
+                ERROR_RED
+            );
+            refreshTerminal();
+            showTokenDialog();
+            return;
+        }
+
+        appendPlain("[réel] ajout de la clé publique au compte GitHub…\n", Color.rgb(238,176,96));
+        refreshTerminal();
+
+        executor.submit(() -> {
+            try {
+                RealSshKeyStore.KeyInfo info = realGit.sshKeyStore().info();
+                String id = new GitHubApiClient(tokenStore.loadToken())
+                    .addAuthenticationSshKey(
+                        "Ubuntu Git Academy Android",
+                        info.publicKey
+                    );
+
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Clé SSH ajoutée au compte GitHub (id " + id + ").\n",
+                        SUCCESS_GREEN
+                    );
+                    refreshTerminal();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Ajout GitHub échoué : " +
+                        safeMessage(e) +
+                        "\nVérifie que le token autorise « Git SSH keys: write ».\n",
+                        ERROR_RED
+                    );
+                    refreshTerminal();
+                });
+            }
+        });
+    }
+
+    private void toggleRealGitTransport() {
+        boolean next = !realGit.isUseSsh();
+
+        if (next && !realGit.sshKeyStore().hasKey()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Clé SSH requise")
+                .setMessage(
+                    "Crée d'abord une clé SSH réelle. La clé privée restera chiffrée par Android Keystore."
+                )
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton(
+                    "Créer la clé",
+                    (d, w) -> generateRealSshKey()
+                )
+                .show();
+            return;
+        }
+
+        realGit.setUseSsh(next);
+
+        executor.submit(() -> {
+            try {
+                realGit.applySelectedTransportToOrigin();
+
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Transport Git réel : " +
+                        (realGit.isUseSsh() ? "SSH" : "HTTPS") +
+                        "\n",
+                        SUCCESS_GREEN
+                    );
+                    refreshRealStatusTextOnly();
+                    refreshTerminal();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    appendPlain(
+                        "Impossible de changer le transport : " +
+                        safeMessage(e) +
+                        "\n",
+                        ERROR_RED
+                    );
+                    refreshTerminal();
+                });
+            }
+        });
     }
 
     private void confirmReset() {
