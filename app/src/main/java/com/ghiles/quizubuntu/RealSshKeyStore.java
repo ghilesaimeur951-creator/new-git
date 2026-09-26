@@ -6,8 +6,9 @@ import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
 import java.io.ByteArrayOutputStream;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
@@ -16,8 +17,8 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
-import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
@@ -27,12 +28,14 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 /**
- * Generates and stores a real SSH key pair for GitHub without ever persisting
- * the private key in plaintext. The private PKCS#8 bytes are encrypted with an
- * AES/GCM key held by Android Keystore.
+ * Real Ed25519 SSH identity used by Ubuntu Lab.
  *
- * Ed25519 is preferred. If the Android security provider does not expose it on
- * an older device, RSA 3072 is used as a compatibility fallback.
+ * The Ed25519 key pair is generated with the bundled Bouncy Castle provider so
+ * the result does not silently fall back to RSA on Android devices whose stock
+ * provider lacks Ed25519. Only the public key is exposed to the user.
+ *
+ * The private PKCS#8 bytes are encrypted with AES/GCM. The AES wrapping key is
+ * non-exportable and lives in Android Keystore.
  */
 public final class RealSshKeyStore {
 
@@ -58,42 +61,39 @@ public final class RealSshKeyStore {
     private static final String PUBLIC_LINE = "public_line";
     private static final String FINGERPRINT = "fingerprint";
 
+    private static final Provider ED25519_PROVIDER = new BouncyCastleProvider();
+
     private final Context context;
 
     public RealSshKeyStore(Context context) {
         this.context = context.getApplicationContext();
     }
 
+    /**
+     * Generates a genuine Ed25519 key pair suitable for GitHub authentication.
+     */
     public synchronized KeyInfo generate(String comment) throws Exception {
         String safeComment =
             comment == null || comment.trim().isEmpty()
                 ? "ubuntu-git-academy"
                 : comment.trim();
 
-        KeyPair pair;
-        String algorithm;
-
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("Ed25519");
-            pair = generator.generateKeyPair();
-            algorithm = "Ed25519";
-        } catch (Exception unsupported) {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(3072);
-            pair = generator.generateKeyPair();
-            algorithm = "RSA";
-        }
+        KeyPairGenerator generator = KeyPairGenerator.getInstance(
+            "Ed25519",
+            ED25519_PROVIDER
+        );
+        KeyPair pair = generator.generateKeyPair();
 
         byte[] privateBytes = pair.getPrivate().getEncoded();
         byte[] publicBytes = pair.getPublic().getEncoded();
 
         if (privateBytes == null || publicBytes == null) {
             throw new IllegalStateException(
-                "Le fournisseur cryptographique Android ne permet pas d'exporter la clé."
+                "Le fournisseur cryptographique n'a pas fourni une clé Ed25519 exportable."
             );
         }
 
-        String publicLine = toOpenSshPublicKey(pair.getPublic(), algorithm, safeComment);
+        String publicLine = toOpenSshEd25519(pair.getPublic(), safeComment);
         String fingerprint = fingerprint(publicLine);
 
         SecretKey wrappingKey = getOrCreateWrappingKey();
@@ -103,7 +103,7 @@ public final class RealSshKeyStore {
 
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(ALGORITHM, algorithm)
+            .putString(ALGORITHM, "Ed25519")
             .putString(PRIVATE_DATA, Base64.encodeToString(encrypted, Base64.NO_WRAP))
             .putString(PRIVATE_IV, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
             .putString(PUBLIC_X509, Base64.encodeToString(publicBytes, Base64.NO_WRAP))
@@ -111,12 +111,13 @@ public final class RealSshKeyStore {
             .putString(FINGERPRINT, fingerprint)
             .apply();
 
-        return new KeyInfo(algorithm, publicLine, fingerprint);
+        return new KeyInfo("Ed25519", publicLine, fingerprint);
     }
 
     public synchronized boolean hasKey() {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        return prefs.contains(PRIVATE_DATA) &&
+        return "Ed25519".equals(prefs.getString(ALGORITHM, "")) &&
+            prefs.contains(PRIVATE_DATA) &&
             prefs.contains(PUBLIC_X509) &&
             prefs.contains(PUBLIC_LINE);
     }
@@ -131,6 +132,9 @@ public final class RealSshKeyStore {
         );
     }
 
+    /**
+     * Decrypts the real private key only in memory when JGit needs it.
+     */
     public synchronized KeyPair loadKeyPair() throws Exception {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
@@ -139,12 +143,12 @@ public final class RealSshKeyStore {
         String ivText = prefs.getString(PRIVATE_IV, "");
         String publicText = prefs.getString(PUBLIC_X509, "");
 
-        if (algorithm.isEmpty() ||
+        if (!"Ed25519".equals(algorithm) ||
             encryptedText.isEmpty() ||
             ivText.isEmpty() ||
             publicText.isEmpty()) {
 
-            throw new IllegalStateException("Aucune clé SSH réelle n'est disponible.");
+            throw new IllegalStateException("Aucune clé SSH Ed25519 réelle n'est disponible.");
         }
 
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -162,7 +166,10 @@ public final class RealSshKeyStore {
         );
         byte[] publicBytes = Base64.decode(publicText, Base64.NO_WRAP);
 
-        KeyFactory factory = KeyFactory.getInstance(algorithm);
+        KeyFactory factory = KeyFactory.getInstance(
+            "Ed25519",
+            ED25519_PROVIDER
+        );
 
         PrivateKey privateKey = factory.generatePrivate(
             new PKCS8EncodedKeySpec(privateBytes)
@@ -179,6 +186,52 @@ public final class RealSshKeyStore {
             .edit()
             .clear()
             .apply();
+    }
+
+    static String toOpenSshEd25519(
+        PublicKey publicKey,
+        String comment
+    ) throws Exception {
+        byte[] x509 = publicKey.getEncoded();
+
+        if (x509 == null || x509.length < 32) {
+            throw new IllegalStateException("Clé publique Ed25519 invalide.");
+        }
+
+        // RFC 8410 SubjectPublicKeyInfo contains the raw 32-byte Ed25519 key
+        // at the end. OpenSSH wire format is:
+        // string "ssh-ed25519" + string raw-public-key.
+        byte[] raw = new byte[32];
+        System.arraycopy(x509, x509.length - 32, raw, 0, 32);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeSshString(
+            out,
+            "ssh-ed25519".getBytes(StandardCharsets.US_ASCII)
+        );
+        writeSshString(out, raw);
+
+        return "ssh-ed25519 " +
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP) +
+            " " +
+            (comment == null ? "" : comment.trim());
+    }
+
+    static String fingerprint(String publicLine) throws Exception {
+        String[] parts = publicLine.split("\\s+");
+
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("Clé publique OpenSSH invalide.");
+        }
+
+        byte[] blob = Base64.decode(parts[1], Base64.NO_WRAP);
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(blob);
+
+        return "SHA256:" +
+            Base64.encodeToString(
+                digest,
+                Base64.NO_WRAP | Base64.NO_PADDING
+            );
     }
 
     private SecretKey getOrCreateWrappingKey() throws Exception {
@@ -208,78 +261,12 @@ public final class RealSshKeyStore {
         return generator.generateKey();
     }
 
-    private String toOpenSshPublicKey(
-        PublicKey publicKey,
-        String algorithm,
-        String comment
-    ) throws Exception {
-
-        byte[] blob;
-        String prefix;
-
-        if ("RSA".equals(algorithm)) {
-            RSAPublicKey rsa = (RSAPublicKey) publicKey;
-
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            writeSshString(out, "ssh-rsa".getBytes(StandardCharsets.US_ASCII));
-            writeMpInt(out, rsa.getPublicExponent());
-            writeMpInt(out, rsa.getModulus());
-
-            blob = out.toByteArray();
-            prefix = "ssh-rsa";
-        } else {
-            // RFC 8410 SubjectPublicKeyInfo for Ed25519 ends with the raw
-            // 32-byte public key. This lets us produce the OpenSSH wire format
-            // without writing the private key to disk.
-            byte[] x509 = publicKey.getEncoded();
-
-            if (x509 == null || x509.length < 32) {
-                throw new IllegalStateException("Clé publique Ed25519 invalide.");
-            }
-
-            byte[] raw = new byte[32];
-            System.arraycopy(x509, x509.length - 32, raw, 0, 32);
-
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            writeSshString(
-                out,
-                "ssh-ed25519".getBytes(StandardCharsets.US_ASCII)
-            );
-            writeSshString(out, raw);
-
-            blob = out.toByteArray();
-            prefix = "ssh-ed25519";
-        }
-
-        return prefix + " " +
-            Base64.encodeToString(blob, Base64.NO_WRAP) +
-            " " +
-            comment;
-    }
-
-    private String fingerprint(String publicLine) throws Exception {
-        String[] parts = publicLine.split("\\s+");
-
-        if (parts.length < 2) return "";
-
-        byte[] blob = Base64.decode(parts[1], Base64.NO_WRAP);
-        byte[] digest = MessageDigest.getInstance("SHA-256").digest(blob);
-
-        return "SHA256:" +
-            Base64.encodeToString(
-                digest,
-                Base64.NO_WRAP | Base64.NO_PADDING
-            );
-    }
-
-    private void writeSshString(ByteArrayOutputStream out, byte[] value) {
+    private static void writeSshString(
+        ByteArrayOutputStream out,
+        byte[] value
+    ) {
         byte[] length = ByteBuffer.allocate(4).putInt(value.length).array();
         out.write(length, 0, length.length);
         out.write(value, 0, value.length);
-    }
-
-    private void writeMpInt(ByteArrayOutputStream out, BigInteger value) {
-        byte[] data = value.toByteArray();
-        writeSshString(out, data);
     }
 }
