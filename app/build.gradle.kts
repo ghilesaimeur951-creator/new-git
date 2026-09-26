@@ -28,7 +28,8 @@ android {
                 "META-INF/LICENSE.txt",
                 "META-INF/NOTICE",
                 "META-INF/NOTICE.txt",
-                "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "OSGI-INF/**"
             )
         }
     }
