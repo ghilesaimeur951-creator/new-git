@@ -970,7 +970,7 @@ public class SimulatorActivity extends Activity {
         String[] items = {
             "Terminal libre",
             "Missions guidées",
-            "GitHub réel",
+            "Terminal Git/SSH réel",
             "Aide & commandes",
             "Catalogue 500+ commandes",
             "Retour à l'Academy"
@@ -1127,7 +1127,7 @@ public class SimulatorActivity extends Activity {
         }
 
         if (realEnvironment) {
-            sectionTitleView.setText("GitHub réel");
+            sectionTitleView.setText("Git/SSH réel");
             realControls.setVisibility(View.VISIBLE);
             objectivePanel.setVisibility(View.GONE);
             interactionRow.setVisibility(View.GONE);
@@ -1175,12 +1175,13 @@ public class SimulatorActivity extends Activity {
 
             interactionLabel.setText("MODE : terminal Git réel");
             objectiveView.setText(
-                "GITHUB RÉEL\n\n" +
-                "Les commandes Git prises en charge utilisent réellement Internet et un dépôt stocké dans l'espace privé de l'application. " +
-                "Aucune opération réelle n'est lancée depuis le mode SIMULATION."
+                "GIT / SSH RÉEL\n\n" +
+                "ssh-keygen crée une vraie clé Ed25519. cat ~/.ssh/id_ed25519.pub affiche la vraie clé publique. " +
+                "ssh -T git@github.com vérifie réellement l'authentification, et git fetch/pull/push utilisent Internet " +
+                "dans l'espace Git privé de l'application. Aucune commande shell arbitraire n'est exécutée sur Android."
             );
 
-            appendSystem("[GITHUB RÉEL] Les opérations réseau seront clairement signalées.");
+            appendSystem("[GIT/SSH RÉEL] Les clés et opérations réseau de cette rubrique sont réelles.");
             refreshRealStatus();
         } else {
             realControls.setVisibility(View.GONE);
@@ -1364,6 +1365,24 @@ public class SimulatorActivity extends Activity {
     private void runCommand(String command) {
         if (command == null || command.trim().isEmpty()) return;
 
+        // In Terminal libre, real SSH/GitHub commands automatically promote
+        // the session to the real Git/SSH sandbox. This is the workflow the
+        // user expects when typing ssh-keygen, ssh -T, git pull, git push...
+        if (!realEnvironment &&
+            !guidedMode &&
+            shouldPromoteToRealGitSsh(command)) {
+
+            appendSystem(
+                "[bascule] Cette commande demande une identité Git/SSH réelle. " +
+                "Ubuntu Lab passe dans l'espace Git/SSH réel de l'application."
+            );
+
+            setEnvironment(true);
+            appendPrompt(command);
+            runRealCommandAsync(command);
+            return;
+        }
+
         appendPrompt(command);
 
         if (realEnvironment) {
@@ -1385,6 +1404,26 @@ public class SimulatorActivity extends Activity {
         updateCommandPrompt();
         refreshTerminal();
         scrollBottom();
+    }
+
+    private boolean shouldPromoteToRealGitSsh(String command) {
+        String n = normalize(command);
+
+        return n.startsWith("ssh-keygen -t ed25519") ||
+            n.startsWith("ssh-add ") ||
+            n.equals("ssh -t git@github.com") ||
+            n.startsWith("eval \"$(ssh-agent -s)\"") ||
+            n.startsWith("cat ~/.ssh/id_ed25519.pub") ||
+            n.startsWith("ssh-keygen -lf ~/.ssh/id_ed25519.pub") ||
+            n.equals("ls -al ~/.ssh") ||
+            n.equals("ls -la ~/.ssh") ||
+            n.startsWith("git clone ") ||
+            n.startsWith("git fetch") ||
+            n.startsWith("git pull") ||
+            n.startsWith("git push") ||
+            n.startsWith("git ls-remote") ||
+            n.startsWith("git remote add origin git@github.com:") ||
+            n.startsWith("git remote set-url origin git@github.com:");
     }
 
     private void renderVirtualResult(
