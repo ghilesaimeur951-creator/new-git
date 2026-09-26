@@ -2196,9 +2196,7 @@ public class SimulatorActivity extends Activity {
     private void updateCommandPrompt() {
         if (commandPromptView == null) return;
 
-        String userHost = realEnvironment
-            ? "github@academy"
-            : "ubuntu@academy";
+        String userHost = "ubuntu@academy";
 
         String path = realEnvironment
             ? realGit.displayPath()
@@ -2215,9 +2213,7 @@ public class SimulatorActivity extends Activity {
     }
 
     private void appendPrompt(String command) {
-        String userHost = realEnvironment
-            ? "github@academy"
-            : "ubuntu@academy";
+        String userHost = "ubuntu@academy";
 
         String path = realEnvironment
             ? realGit.displayPath()
