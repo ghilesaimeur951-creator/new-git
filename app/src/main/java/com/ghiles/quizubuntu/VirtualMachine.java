@@ -1177,11 +1177,16 @@ public final class VirtualMachine {
             return Result.success("Branch '" + name + "' created.");
         }
 
-        if (n.startsWith("git branch -m ") || n.startsWith("git branch -M ")) {
-            int offset = command.indexOf(' ', command.indexOf(' ') + 1) + 1;
-            String newName = command.substring(offset).trim();
+        if (n.startsWith("git branch -m ")) {
+            String[] args = command.trim().split("\\s+");
 
+            if (args.length < 4) {
+                return Result.error("fatal: branch name required");
+            }
+
+            String newName = args[3];
             String hash = branches.remove(headBranch);
+
             headBranch = newName;
             branches.put(headBranch, hash == null ? "" : hash);
 
