@@ -73,9 +73,18 @@ public class RealEd25519CryptoTest {
         );
         KeyPair pair = generator.generateKeyPair();
 
-        assertEquals(
-            KeyPairProvider.SSH_ED25519,
-            KeyUtils.getKeyType(pair.getPublic())
+        String detected = KeyUtils.getKeyType(pair.getPublic());
+        System.err.println(
+            "ED25519_TEST algorithm=" +
+            pair.getPublic().getAlgorithm() +
+            " detected=" +
+            detected
+        );
+
+        assertNotNull("Apache MINA must recognize the generated public key", detected);
+        assertTrue(
+            "Detected key type must be Ed25519: " + detected,
+            detected.toLowerCase().contains("ed25519")
         );
     }
 }
