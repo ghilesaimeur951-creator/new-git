@@ -99,9 +99,21 @@ public final class RealGitClient {
     public String selectedTransportUrl() {
         String url = selectedRepositoryUrl();
 
-        if (!isUseSsh() || url.isEmpty()) return url;
+        if (url.isEmpty()) return url;
 
-        return toSshUrl(url);
+        return isUseSsh() ? toSshUrl(url) : toHttpsUrl(url);
+    }
+
+    public synchronized void applySelectedTransportToOrigin() throws Exception {
+        if (!hasLocalRepository()) return;
+
+        try (Git git = Git.open(workTree())) {
+            String url = selectedTransportUrl();
+
+            if (!url.isEmpty()) {
+                setOrigin(git.getRepository(), url);
+            }
+        }
     }
 
     public File workTree() {
@@ -200,6 +212,17 @@ public final class RealGitClient {
             }
 
             return cloneSelectedRepository(false);
+        }
+
+        if (command.startsWith("ssh-keygen ") ||
+            command.startsWith("ssh-add ") ||
+            command.startsWith("ssh -T ") ||
+            command.startsWith("eval ") ||
+            command.startsWith("cat ~/.ssh/") ||
+            command.startsWith("ls -al ~/.ssh") ||
+            command.startsWith("ls -la ~/.ssh")) {
+
+            return executeRealSshCommand(command);
         }
 
         if (!command.startsWith("git ")) {
@@ -729,6 +752,131 @@ public final class RealGitClient {
 
         return "git@github.com:" + fullName +
             (fullName.endsWith(".git") ? "" : ".git");
+    }
+
+    private String toHttpsUrl(String url) {
+        if (url == null || url.isEmpty()) return "";
+
+        if (url.startsWith("https://")) return url;
+
+        String fullName = inferFullName(url);
+
+        if (fullName.endsWith(".git")) {
+            fullName = fullName.substring(0, fullName.length() - 4);
+        }
+
+        return "https://github.com/" + fullName + ".git";
+    }
+
+    private String executeRealSshCommand(String command) throws Exception {
+        String normalized = command.trim().replaceAll("\\s+", " ");
+
+        if (normalized.startsWith("ssh-keygen -t ed25519")) {
+            String comment = "ubuntu-git-academy";
+            int commentIndex = command.indexOf("-C");
+
+            if (commentIndex >= 0) {
+                comment = stripQuotes(
+                    command.substring(commentIndex + 2).trim()
+                );
+            }
+
+            RealSshKeyStore.KeyInfo info = sshKeyStore.generate(comment);
+            sshSessionFactory = null;
+
+            String fileName = "Ed25519".equals(info.algorithm)
+                ? "id_ed25519"
+                : "id_rsa";
+
+            return "Generating public/private " + info.algorithm + " key pair.\n" +
+                "Your identification has been stored encrypted by Android Keystore.\n" +
+                "Your public key is available as ~/.ssh/" + fileName + ".pub\n" +
+                "The key fingerprint is:\n" +
+                info.fingerprint;
+        }
+
+        if (normalized.equals("ls -al ~/.ssh") ||
+            normalized.equals("ls -la ~/.ssh")) {
+
+            if (!sshKeyStore.hasKey()) {
+                return "total 0";
+            }
+
+            RealSshKeyStore.KeyInfo info = sshKeyStore.info();
+            String fileName = "Ed25519".equals(info.algorithm)
+                ? "id_ed25519"
+                : "id_rsa";
+
+            return "total 8\n" +
+                "-rw-------  " + fileName + "  [encrypted private key]\n" +
+                "-rw-r--r--  " + fileName + ".pub";
+        }
+
+        if (normalized.startsWith("cat ~/.ssh/") &&
+            normalized.endsWith(".pub")) {
+
+            if (!sshKeyStore.hasKey()) {
+                return "cat: clé publique introuvable";
+            }
+
+            return sshKeyStore.info().publicKey;
+        }
+
+        if (normalized.startsWith("ssh-keygen -lf ~/.ssh/") &&
+            normalized.endsWith(".pub")) {
+
+            if (!sshKeyStore.hasKey()) {
+                return "ssh-keygen: clé publique introuvable";
+            }
+
+            RealSshKeyStore.KeyInfo info = sshKeyStore.info();
+
+            return ("Ed25519".equals(info.algorithm) ? "256 " : "3072 ") +
+                info.fingerprint +
+                " ubuntu-git-academy (" +
+                info.algorithm.toUpperCase() +
+                ")";
+        }
+
+        if (normalized.equals("eval \"$(ssh-agent -s)\"") ||
+            normalized.equals("eval '$(ssh-agent -s)'")) {
+
+            return "Ubuntu Lab Android utilise directement la clé privée chiffrée avec JGit ; " +
+                "aucun processus ssh-agent séparé n'est nécessaire.";
+        }
+
+        if (normalized.startsWith("ssh-add ")) {
+            if (!sshKeyStore.hasKey()) {
+                return "Could not load identity: aucune clé SSH réelle.";
+            }
+
+            return "Identity loaded from Android secure storage.";
+        }
+
+        if (normalized.equals("ssh -T git@github.com")) {
+            if (!sshKeyStore.hasKey()) {
+                return "git@github.com: Permission denied (publickey).";
+            }
+
+            String remote = toSshUrl(selectedRepositoryUrl());
+
+            if (remote.isEmpty()) {
+                return "Sélectionne d'abord un dépôt GitHub afin de vérifier l'authentification SSH.";
+            }
+
+            LsRemoteCommand lsRemote = Git.lsRemoteRepository()
+                .setRemote(remote)
+                .setHeads(true);
+
+            configureTransport(lsRemote, remote);
+            lsRemote.call();
+
+            return "Authentification SSH GitHub vérifiée sur " +
+                selectedRepositoryName() +
+                ". GitHub ne fournit pas d'accès shell.";
+        }
+
+        return "Commande SSH réelle non prise en charge : " + command;
     }
 
     private CredentialsProvider credentials() {
