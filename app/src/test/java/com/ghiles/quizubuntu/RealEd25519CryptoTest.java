@@ -39,6 +39,16 @@ public class RealEd25519CryptoTest {
         assertEquals("Ed25519", pair.getPrivate().getAlgorithm());
         assertEquals("Ed25519", pair.getPublic().getAlgorithm());
 
+        String sshKeyType = KeyUtils.getKeyType(pair.getPublic());
+        assertNotNull(
+            "Apache MINA must recognize the same Bouncy Castle Ed25519 public key used by the APK",
+            sshKeyType
+        );
+        assertTrue(
+            "The production public key must be detected as ssh-ed25519: " + sshKeyType,
+            sshKeyType.toLowerCase().contains("ed25519")
+        );
+
         byte[] message = "ubuntu-git-academy-ssh-test"
             .getBytes(StandardCharsets.UTF_8);
 
