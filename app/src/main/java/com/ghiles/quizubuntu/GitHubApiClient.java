@@ -48,6 +48,53 @@ public final class GitHubApiClient {
         return user.optString("login", "");
     }
 
+    public String addAuthenticationSshKey(
+        String title,
+        String publicKey
+    ) throws Exception {
+        if (token.isEmpty()) {
+            throw new IllegalStateException("Aucun jeton GitHub n'est enregistré.");
+        }
+
+        JSONObject body = new JSONObject();
+        body.put("title", title);
+        body.put("key", publicKey);
+
+        JSONObject result = new JSONObject(
+            request(
+                "POST",
+                "https://api.github.com/user/keys",
+                body.toString(),
+                true
+            )
+        );
+
+        return String.valueOf(result.optLong("id", 0L));
+    }
+
+    public static List<String> githubSshKnownHostLines() throws Exception {
+        String json = requestAnonymous(
+            "GET",
+            "https://api.github.com/meta"
+        );
+
+        JSONObject meta = new JSONObject(json);
+        JSONArray keys = meta.optJSONArray("ssh_keys");
+        List<String> result = new ArrayList<>();
+
+        if (keys == null) return result;
+
+        for (int i = 0; i < keys.length(); i++) {
+            String key = keys.optString(i, "").trim();
+
+            if (!key.isEmpty()) {
+                result.add("github.com " + key);
+            }
+        }
+
+        return result;
+    }
+
     public List<RepoInfo> listRepositories() throws Exception {
         String json = get(
             "https://api.github.com/user/repos" +
@@ -74,20 +121,39 @@ public final class GitHubApiClient {
     }
 
     private String get(String urlText) throws Exception {
-        if (token.isEmpty()) {
+        return request("GET", urlText, null, true);
+    }
+
+    private String request(
+        String method,
+        String urlText,
+        String jsonBody,
+        boolean authenticated
+    ) throws Exception {
+        if (authenticated && token.isEmpty()) {
             throw new IllegalStateException("Aucun jeton GitHub n'est enregistré.");
         }
 
         HttpURLConnection connection = (HttpURLConnection) new URL(urlText).openConnection();
 
         try {
-            connection.setRequestMethod("GET");
+            connection.setRequestMethod(method);
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(20000);
             connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("Authorization", "Bearer " + token);
-            connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            connection.setRequestProperty("X-GitHub-Api-Version", "2026-03-10");
             connection.setRequestProperty("User-Agent", "Ubuntu-Git-Academy-Android");
+
+            if (authenticated) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+            }
+
+            if (jsonBody != null) {
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                byte[] bytes = jsonBody.getBytes(StandardCharsets.UTF_8);
+                connection.getOutputStream().write(bytes);
+            }
 
             int code = connection.getResponseCode();
             InputStream input = code >= 200 && code < 300
@@ -112,6 +178,54 @@ public final class GitHubApiClient {
         } finally {
             connection.disconnect();
         }
+    }
+
+    private static String requestAnonymous(
+        String method,
+        String urlText
+    ) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(urlText).openConnection();
+
+        try {
+            connection.setRequestMethod(method);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(20000);
+            connection.setRequestProperty("Accept", "application/vnd.github+json");
+            connection.setRequestProperty("X-GitHub-Api-Version", "2026-03-10");
+            connection.setRequestProperty("User-Agent", "Ubuntu-Git-Academy-Android");
+
+            int code = connection.getResponseCode();
+            InputStream input = code >= 200 && code < 300
+                ? connection.getInputStream()
+                : connection.getErrorStream();
+
+            String body = readStatic(input);
+
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException("GitHub HTTP " + code);
+            }
+
+            return body;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private static String readStatic(InputStream input) throws Exception {
+        if (input == null) return "";
+
+        BufferedReader reader = new BufferedReader(
+            new InputStreamReader(input, StandardCharsets.UTF_8)
+        );
+
+        StringBuilder builder = new StringBuilder();
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            builder.append(line).append('\n');
+        }
+
+        return builder.toString();
     }
 
     private String readAll(InputStream input) throws Exception {
