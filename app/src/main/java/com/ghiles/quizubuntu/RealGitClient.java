@@ -26,6 +26,7 @@ import org.eclipse.jgit.transport.SshTransport;
 import org.eclipse.jgit.transport.sshd.SshdSessionFactory;
 import org.eclipse.jgit.transport.sshd.SshdSessionFactoryBuilder;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
+import org.apache.sshd.common.util.security.SecurityUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -272,12 +273,38 @@ public final class RealGitClient {
             if (command.startsWith("git remote add origin ")) {
                 String url = command.substring("git remote add origin ".length()).trim();
                 setOrigin(repository, url);
+
+                if (isSshUrl(url)) {
+                    setUseSsh(true);
+                }
+
+                if (selectedRepositoryUrl().isEmpty() && isGithubUrl(url)) {
+                    selectRepository(
+                        inferFullName(url),
+                        toHttpsUrl(url),
+                        defaultBranch()
+                    );
+                }
+
                 return "";
             }
 
             if (command.startsWith("git remote set-url origin ")) {
                 String url = command.substring("git remote set-url origin ".length()).trim();
                 setOrigin(repository, url);
+
+                if (isSshUrl(url)) {
+                    setUseSsh(true);
+                }
+
+                if (isGithubUrl(url)) {
+                    selectRepository(
+                        inferFullName(url),
+                        toHttpsUrl(url),
+                        defaultBranch()
+                    );
+                }
+
                 return "";
             }
 
@@ -671,6 +698,20 @@ public final class RealGitClient {
     private synchronized SshdSessionFactory sshSessionFactory() throws Exception {
         if (sshSessionFactory != null) return sshSessionFactory;
 
+        // Force Apache MINA SSHD to enable its Bouncy Castle registrar.
+        // The APK bundles bcprov so Ed25519 signing is available even when the
+        // Android stock provider does not expose Ed25519.
+        System.setProperty(
+            "org.apache.sshd.security.provider.BC.enabled",
+            "true"
+        );
+
+        if (!SecurityUtils.isEDDSACurveSupported()) {
+            throw new IllegalStateException(
+                "Le moteur SSH ne reconnaît pas Ed25519 sur cet appareil."
+            );
+        }
+
         ensureGithubKnownHosts();
 
         File home = new File(context.getFilesDir(), "ssh-home");
@@ -783,16 +824,18 @@ public final class RealGitClient {
 
             RealSshKeyStore.KeyInfo info = sshKeyStore.generate(comment);
             sshSessionFactory = null;
+            setUseSsh(true);
 
-            String fileName = "Ed25519".equals(info.algorithm)
-                ? "id_ed25519"
-                : "id_rsa";
+            if (hasLocalRepository() && !selectedRepositoryUrl().isEmpty()) {
+                applySelectedTransportToOrigin();
+            }
 
-            return "Generating public/private " + info.algorithm + " key pair.\n" +
-                "Your identification has been stored encrypted by Android Keystore.\n" +
-                "Your public key is available as ~/.ssh/" + fileName + ".pub\n" +
+            return "Generating public/private ed25519 key pair.\n" +
+                "Your identification has been saved in /home/ubuntu/.ssh/id_ed25519\n" +
+                "Your public key has been saved in /home/ubuntu/.ssh/id_ed25519.pub\n" +
                 "The key fingerprint is:\n" +
-                info.fingerprint;
+                info.fingerprint + "\n" +
+                "Private key storage: encrypted with Android Keystore.";
         }
 
         if (normalized.equals("ls -al ~/.ssh") ||
@@ -803,13 +846,9 @@ public final class RealGitClient {
             }
 
             RealSshKeyStore.KeyInfo info = sshKeyStore.info();
-            String fileName = "Ed25519".equals(info.algorithm)
-                ? "id_ed25519"
-                : "id_rsa";
-
             return "total 8\n" +
-                "-rw-------  " + fileName + "  [encrypted private key]\n" +
-                "-rw-r--r--  " + fileName + ".pub";
+                "-rw-------  id_ed25519  [encrypted private key]\n" +
+                "-rw-r--r--  id_ed25519.pub";
         }
 
         if (normalized.startsWith("cat ~/.ssh/") &&
@@ -831,11 +870,9 @@ public final class RealGitClient {
 
             RealSshKeyStore.KeyInfo info = sshKeyStore.info();
 
-            return ("Ed25519".equals(info.algorithm) ? "256 " : "3072 ") +
+            return "256 " +
                 info.fingerprint +
-                " ubuntu-git-academy (" +
-                info.algorithm.toUpperCase() +
-                ")";
+                " ubuntu-git-academy (ED25519)";
         }
 
         if (normalized.equals("eval \"$(ssh-agent -s)\"") ||
@@ -850,7 +887,7 @@ public final class RealGitClient {
                 return "Could not load identity: aucune clé SSH réelle.";
             }
 
-            return "Identity loaded from Android secure storage.";
+            return "Identity added: /home/ubuntu/.ssh/id_ed25519 (ED25519, Android secure storage)";
         }
 
         if (normalized.equals("ssh -T git@github.com")) {
@@ -858,11 +895,9 @@ public final class RealGitClient {
                 return "git@github.com: Permission denied (publickey).";
             }
 
-            String remote = toSshUrl(selectedRepositoryUrl());
-
-            if (remote.isEmpty()) {
-                return "Sélectionne d'abord un dépôt GitHub afin de vérifier l'authentification SSH.";
-            }
+            String remote = selectedRepositoryUrl().isEmpty()
+                ? "git@github.com:github/gitignore.git"
+                : toSshUrl(selectedRepositoryUrl());
 
             LsRemoteCommand lsRemote = Git.lsRemoteRepository()
                 .setRemote(remote)
@@ -871,9 +906,17 @@ public final class RealGitClient {
             configureTransport(lsRemote, remote);
             lsRemote.call();
 
-            return "Authentification SSH GitHub vérifiée sur " +
-                selectedRepositoryName() +
-                ". GitHub ne fournit pas d'accès shell.";
+            String login = context
+                .getSharedPreferences("quiz_progress", Context.MODE_PRIVATE)
+                .getString("realGitHubLogin", "");
+
+            if (login.isEmpty()) {
+                return "You've successfully authenticated to GitHub with the app's real Ed25519 key. " +
+                    "GitHub does not provide shell access.";
+            }
+
+            return "Hi " + login +
+                "! You've successfully authenticated, but GitHub does not provide shell access.";
         }
 
         return "Commande SSH réelle non prise en charge : " + command;
@@ -1127,10 +1170,27 @@ public final class RealGitClient {
     }
 
     private String inferFullName(String url) {
-        String clean = url;
+        if (url == null) return "";
+
+        String clean = url.trim();
 
         if (clean.endsWith(".git")) {
             clean = clean.substring(0, clean.length() - 4);
+        }
+
+        String httpsPrefix = "https://github.com/";
+        if (clean.startsWith(httpsPrefix)) {
+            return clean.substring(httpsPrefix.length());
+        }
+
+        String sshPrefix = "git@github.com:";
+        if (clean.startsWith(sshPrefix)) {
+            return clean.substring(sshPrefix.length());
+        }
+
+        String sshUrlPrefix = "ssh://git@github.com/";
+        if (clean.startsWith(sshUrlPrefix)) {
+            return clean.substring(sshUrlPrefix.length());
         }
 
         int slash = clean.indexOf("github.com/");
@@ -1139,6 +1199,14 @@ public final class RealGitClient {
         }
 
         return clean;
+    }
+
+    private boolean isGithubUrl(String url) {
+        if (url == null) return false;
+
+        return url.startsWith("https://github.com/") ||
+            url.startsWith("git@github.com:") ||
+            url.startsWith("ssh://git@github.com/");
     }
 
     private void deleteRecursively(File file) {
