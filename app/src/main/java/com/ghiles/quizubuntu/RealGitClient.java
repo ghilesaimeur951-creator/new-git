@@ -6,6 +6,13 @@ import android.content.SharedPreferences;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.PullResult;
 import org.eclipse.jgit.api.Status;
+import org.eclipse.jgit.api.CloneCommand;
+import org.eclipse.jgit.api.FetchCommand;
+import org.eclipse.jgit.api.PullCommand;
+import org.eclipse.jgit.api.PushCommand;
+import org.eclipse.jgit.api.LsRemoteCommand;
+import org.eclipse.jgit.api.TransportCommand;
+import org.eclipse.jgit.api.TransportConfigCallback;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.lib.ConfigConstants;
@@ -15,20 +22,26 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.transport.SshTransport;
+import org.eclipse.jgit.transport.sshd.SshdSessionFactory;
+import org.eclipse.jgit.transport.sshd.SshdSessionFactoryBuilder;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Real Git operations inside the application's private storage.
  *
  * The class never invokes a system shell. JGit reads/writes a repository under
- * Context#getFilesDir(), and network access is HTTPS only.
+ * Context#getFilesDir(). Network access can use HTTPS token authentication
+ * or an app-generated SSH key, selected explicitly by the user.
  */
 public final class RealGitClient {
 
@@ -36,14 +49,18 @@ public final class RealGitClient {
     private static final String REPO_URL = "repo_url";
     private static final String REPO_NAME = "repo_name";
     private static final String DEFAULT_BRANCH = "default_branch";
+    private static final String USE_SSH = "use_ssh";
 
     private final Context context;
     private final SecureTokenStore tokenStore;
+    private final RealSshKeyStore sshKeyStore;
     private final SharedPreferences prefs;
+    private SshdSessionFactory sshSessionFactory;
 
     public RealGitClient(Context context, SecureTokenStore tokenStore) {
         this.context = context.getApplicationContext();
         this.tokenStore = tokenStore;
+        this.sshKeyStore = new RealSshKeyStore(this.context);
         this.prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
@@ -65,6 +82,26 @@ public final class RealGitClient {
 
     public String defaultBranch() {
         return prefs.getString(DEFAULT_BRANCH, "main");
+    }
+
+    public void setUseSsh(boolean enabled) {
+        prefs.edit().putBoolean(USE_SSH, enabled).apply();
+    }
+
+    public boolean isUseSsh() {
+        return prefs.getBoolean(USE_SSH, false);
+    }
+
+    public RealSshKeyStore sshKeyStore() {
+        return sshKeyStore;
+    }
+
+    public String selectedTransportUrl() {
+        String url = selectedRepositoryUrl();
+
+        if (!isUseSsh() || url.isEmpty()) return url;
+
+        return toSshUrl(url);
     }
 
     public File workTree() {
@@ -90,7 +127,7 @@ public final class RealGitClient {
     }
 
     public synchronized String cloneSelectedRepository(boolean replaceExisting) throws Exception {
-        String url = selectedRepositoryUrl();
+        String url = selectedTransportUrl();
 
         if (url.isEmpty()) {
             throw new IllegalStateException("Aucun dépôt GitHub n'est sélectionné.");
@@ -126,12 +163,17 @@ public final class RealGitClient {
             throw new IllegalStateException("Le chemin de travail Git réel est invalide.");
         }
 
-        try (Git ignored = Git.cloneRepository()
+        CloneCommand clone = Git.cloneRepository()
             .setURI(url)
-            .setDirectory(target)
-            .setCredentialsProvider(credentials())
-            .call()) {
-            return "Clonage terminé : " + selectedRepositoryName();
+            .setDirectory(target);
+
+        configureTransport(clone, url);
+
+        try (Git ignored = clone.call()) {
+            return "Clonage terminé via " +
+                (isSshUrl(url) ? "SSH" : "HTTPS") +
+                " : " +
+                selectedRepositoryName();
         }
     }
 
@@ -142,8 +184,9 @@ public final class RealGitClient {
 
         if (command.startsWith("git clone ")) {
             String url = command.substring("git clone ".length()).trim();
-            if (!url.startsWith("https://")) {
-                return "Mode GitHub réel : utilise une URL HTTPS pour l'authentification sécurisée.";
+
+            if (!url.startsWith("https://") && !isSshUrl(url)) {
+                return "Mode GitHub réel : utilise une URL HTTPS ou git@github.com:OWNER/REPO.git.";
             }
 
             selectRepository(
@@ -151,6 +194,10 @@ public final class RealGitClient {
                 url,
                 "main"
             );
+
+            if (isSshUrl(url)) {
+                setUseSsh(true);
+            }
 
             return cloneSelectedRepository(false);
         }
@@ -377,52 +424,64 @@ public final class RealGitClient {
                 "git fetch --all".equals(command) ||
                 "git fetch --prune".equals(command)) {
 
-                git.fetch()
+                FetchCommand fetch = git.fetch()
                     .setRemote("origin")
-                    .setRemoveDeletedRefs(command.contains("--prune"))
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .setRemoveDeletedRefs(command.contains("--prune"));
 
-                return "Fetch terminé depuis origin.";
+                configureTransport(fetch, originUrl(repository));
+                fetch.call();
+
+                return "Fetch terminé depuis origin via " +
+                    transportLabel(originUrl(repository)) +
+                    ".";
             }
 
             if ("git pull origin main".equals(command)) {
-                PullResult result = git.pull()
+                PullCommand pull = git.pull()
                     .setRemote("origin")
-                    .setRemoteBranchName("main")
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .setRemoteBranchName("main");
 
-                return describePull(result);
+                configureTransport(pull, originUrl(repository));
+                PullResult result = pull.call();
+
+                return describePull(result) +
+                    "\nTransport réel : " +
+                    transportLabel(originUrl(repository));
             }
 
             if ("git pull --rebase origin main".equals(command)) {
-                PullResult result = git.pull()
+                PullCommand pull = git.pull()
                     .setRemote("origin")
                     .setRemoteBranchName("main")
-                    .setRebase(true)
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .setRebase(true);
 
-                return describePull(result);
+                configureTransport(pull, originUrl(repository));
+                PullResult result = pull.call();
+
+                return describePull(result) +
+                    "\nTransport réel : " +
+                    transportLabel(originUrl(repository));
             }
 
             if ("git push".equals(command)) {
-                git.push()
-                    .setCredentialsProvider(credentials())
-                    .call();
+                PushCommand push = git.push();
+                configureTransport(push, originUrl(repository));
+                push.call();
 
-                return "Push terminé.";
+                return "Push terminé via " +
+                    transportLabel(originUrl(repository)) +
+                    ".";
             }
 
             if (command.startsWith("git push -u origin ")) {
                 String branch = command.substring("git push -u origin ".length()).trim();
 
-                git.push()
+                PushCommand push = git.push()
                     .setRemote("origin")
-                    .add(branch)
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .add(branch);
+
+                configureTransport(push, originUrl(repository));
+                push.call();
 
                 repository.getConfig().setString(
                     ConfigConstants.CONFIG_BRANCH_SECTION,
@@ -444,11 +503,12 @@ public final class RealGitClient {
             if (command.startsWith("git push origin --delete ")) {
                 String branch = command.substring("git push origin --delete ".length()).trim();
 
-                git.push()
+                PushCommand push = git.push()
                     .setRemote("origin")
-                    .setRefSpecs(new RefSpec(":refs/heads/" + branch))
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .setRefSpecs(new RefSpec(":refs/heads/" + branch));
+
+                configureTransport(push, originUrl(repository));
+                push.call();
 
                 return "Branche distante supprimée : " + branch;
             }
@@ -456,13 +516,17 @@ public final class RealGitClient {
             if (command.startsWith("git push origin ")) {
                 String branch = command.substring("git push origin ".length()).trim();
 
-                git.push()
+                PushCommand push = git.push()
                     .setRemote("origin")
-                    .add(branch)
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .add(branch);
 
-                return "Push terminé vers origin/" + branch + ".";
+                configureTransport(push, originUrl(repository));
+                push.call();
+
+                return "Push terminé vers origin/" + branch +
+                    " via " +
+                    transportLabel(originUrl(repository)) +
+                    ".";
             }
 
             if ("git ls-remote origin".equals(command) ||
@@ -478,11 +542,12 @@ public final class RealGitClient {
                     return "fatal: aucun remote origin configuré";
                 }
 
-                Collection<Ref> refs = Git.lsRemoteRepository()
+                LsRemoteCommand lsRemote = Git.lsRemoteRepository()
                     .setRemote(origin)
-                    .setHeads(command.contains("--heads"))
-                    .setCredentialsProvider(credentials())
-                    .call();
+                    .setHeads(command.contains("--heads"));
+
+                configureTransport(lsRemote, origin);
+                Collection<Ref> refs = lsRemote.call();
 
                 StringBuilder out = new StringBuilder();
 
@@ -551,6 +616,119 @@ public final class RealGitClient {
 
         return "En mode GitHub réel, les commandes shell arbitraires restent désactivées. " +
             "Utilise les commandes Git prises en charge ou repasse en SIMULATION.";
+    }
+
+    private void configureTransport(
+        TransportCommand<?, ?> command,
+        String url
+    ) throws Exception {
+        if (isSshUrl(url)) {
+            if (!sshKeyStore.hasKey()) {
+                throw new IllegalStateException(
+                    "Aucune clé SSH réelle. Génère une clé puis ajoute sa clé publique à GitHub."
+                );
+            }
+
+            command.setTransportConfigCallback(sshTransportCallback());
+        } else {
+            command.setCredentialsProvider(credentials());
+        }
+    }
+
+    private TransportConfigCallback sshTransportCallback() throws Exception {
+        final SshdSessionFactory factory = sshSessionFactory();
+
+        return transport -> {
+            if (transport instanceof SshTransport) {
+                ((SshTransport) transport).setSshSessionFactory(factory);
+            }
+        };
+    }
+
+    private synchronized SshdSessionFactory sshSessionFactory() throws Exception {
+        if (sshSessionFactory != null) return sshSessionFactory;
+
+        ensureGithubKnownHosts();
+
+        File home = new File(context.getFilesDir(), "ssh-home");
+        File sshDir = new File(home, ".ssh");
+
+        if (!sshDir.exists() && !sshDir.mkdirs()) {
+            throw new IllegalStateException("Impossible de créer le dossier SSH privé.");
+        }
+
+        java.security.KeyPair keyPair = sshKeyStore.loadKeyPair();
+        File knownHosts = new File(sshDir, "known_hosts");
+
+        sshSessionFactory = new SshdSessionFactoryBuilder()
+            .setHomeDirectory(home)
+            .setSshDirectory(sshDir)
+            .setDefaultKeysProvider(dir -> Collections.singletonList(keyPair))
+            .setDefaultKnownHostsFiles(
+                dir -> Collections.singletonList(knownHosts.toPath())
+            )
+            .setPreferredAuthentications("publickey")
+            .setConnectorFactory(null)
+            .build(null);
+
+        return sshSessionFactory;
+    }
+
+    private void ensureGithubKnownHosts() throws Exception {
+        File home = new File(context.getFilesDir(), "ssh-home");
+        File sshDir = new File(home, ".ssh");
+
+        if (!sshDir.exists() && !sshDir.mkdirs()) {
+            throw new IllegalStateException("Impossible de créer .ssh.");
+        }
+
+        File knownHosts = new File(sshDir, "known_hosts");
+        List<String> lines = GitHubApiClient.githubSshKnownHostLines();
+
+        if (lines.isEmpty()) {
+            throw new IllegalStateException(
+                "GitHub n'a renvoyé aucune clé hôte SSH."
+            );
+        }
+
+        try (FileOutputStream output = new FileOutputStream(knownHosts, false)) {
+            for (String line : lines) {
+                output.write(line.getBytes(StandardCharsets.UTF_8));
+                output.write('\n');
+            }
+        }
+    }
+
+    private String originUrl(Repository repository) {
+        String url = repository.getConfig().getString(
+            ConfigConstants.CONFIG_REMOTE_SECTION,
+            "origin",
+            ConfigConstants.CONFIG_KEY_URL
+        );
+
+        return url == null ? "" : url;
+    }
+
+    private String transportLabel(String url) {
+        return isSshUrl(url) ? "SSH" : "HTTPS";
+    }
+
+    private boolean isSshUrl(String url) {
+        if (url == null) return false;
+
+        return url.startsWith("git@github.com:") ||
+            url.startsWith("ssh://git@github.com/");
+    }
+
+    private String toSshUrl(String url) {
+        if (isSshUrl(url)) return url;
+
+        String fullName = inferFullName(url);
+
+        if (fullName.isEmpty()) return url;
+
+        return "git@github.com:" + fullName +
+            (fullName.endsWith(".git") ? "" : ".git");
     }
 
     private CredentialsProvider credentials() {
