@@ -104,6 +104,10 @@ public class VirtualMachine250CommandTest {
                 "Unsupported command fallback for: " + command + " -> " + result.text,
                 text.contains("non prise en charge")
             );
+            if (text.contains("simulation documentaire")) {
+                System.err.println("AUDIT_DOCUMENTARY: " + command + " -> " + result.text);
+            }
+
             assertFalse(
                 "A top-250 command must have behavior, not documentary fallback: " + command + " -> " + result.text,
                 text.contains("simulation documentaire")
