@@ -1,0 +1,81 @@
+package com.ghiles.quizubuntu;
+
+import org.apache.sshd.common.config.keys.KeyUtils;
+import org.apache.sshd.common.keyprovider.KeyPairProvider;
+import org.apache.sshd.common.util.security.SecurityUtils;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.junit.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Provider;
+import java.security.Signature;
+
+import static org.junit.Assert.*;
+
+/**
+ * Verifies the actual crypto primitives used by the Android SSH path.
+ * No GitHub secret is required: this proves that the APK's bundled provider
+ * can generate, sign and verify a real Ed25519 identity and that Apache MINA
+ * SSHD recognizes it as ssh-ed25519.
+ */
+public class RealEd25519CryptoTest {
+
+    @Test
+    public void bundledProviderGeneratesUsableEd25519Key() throws Exception {
+        Provider provider = new BouncyCastleProvider();
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance(
+            "Ed25519",
+            provider
+        );
+        KeyPair pair = generator.generateKeyPair();
+
+        assertNotNull(pair.getPrivate());
+        assertNotNull(pair.getPublic());
+        assertNotNull(pair.getPrivate().getEncoded());
+        assertNotNull(pair.getPublic().getEncoded());
+        assertEquals("Ed25519", pair.getPrivate().getAlgorithm());
+        assertEquals("Ed25519", pair.getPublic().getAlgorithm());
+
+        byte[] message = "ubuntu-git-academy-ssh-test"
+            .getBytes(StandardCharsets.UTF_8);
+
+        Signature signer = Signature.getInstance("Ed25519", provider);
+        signer.initSign(pair.getPrivate());
+        signer.update(message);
+        byte[] signature = signer.sign();
+
+        Signature verifier = Signature.getInstance("Ed25519", provider);
+        verifier.initVerify(pair.getPublic());
+        verifier.update(message);
+
+        assertTrue("Generated Ed25519 signature must verify", verifier.verify(signature));
+    }
+
+    @Test
+    public void apacheMinaRecognizesEd25519() throws Exception {
+        System.setProperty(
+            "org.apache.sshd.security.provider.BC.enabled",
+            "true"
+        );
+
+        assertTrue(
+            "Apache MINA SSHD must expose Ed25519 support",
+            SecurityUtils.isEDDSACurveSupported()
+        );
+
+        Provider provider = new BouncyCastleProvider();
+        KeyPairGenerator generator = KeyPairGenerator.getInstance(
+            "Ed25519",
+            provider
+        );
+        KeyPair pair = generator.generateKeyPair();
+
+        assertEquals(
+            KeyPairProvider.SSH_ED25519,
+            KeyUtils.getKeyType(pair.getPublic())
+        );
+    }
+}
