@@ -36,8 +36,8 @@ android {
 }
 
 dependencies {
-    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.1.202505221210-r")
-    implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:6.10.1.202505221210-r")
+    implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
+    implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.7.1.202607240634-r")
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
