@@ -118,6 +118,20 @@ public class VirtualMachine250CommandTest {
                 command.startsWith("git remote add origin ") ||
                 "git merge --abort".equals(command);
 
+            if (expectedError && result.kind != VirtualMachine.Kind.ERROR) {
+                System.err.println(
+                    "AUDIT_EXPECTED_ERROR: " + command +
+                    " -> " + result.kind + " / " + result.text
+                );
+            }
+
+            if (!expectedError && result.kind == VirtualMachine.Kind.ERROR) {
+                System.err.println(
+                    "AUDIT_UNEXPECTED_ERROR: " + command +
+                    " -> " + result.text
+                );
+            }
+
             if (expectedError) {
                 assertEquals(
                     "Expected a realistic error state for: " + command + " -> " + result.text,
