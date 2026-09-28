@@ -44,7 +44,7 @@ jobs:
       - name: Compare simulator with Bash and Git
         run: |
           mkdir -p build/audit-classes
-          javac -d build/audit-classes app/src/main/java/com/ghiles/quizubuntu/{VirtualMachine,CommandCatalog,ShellSyntax,TextCommands,TextFilters}.java tools/{CatalogAuditProbe,DifferentialProbe,TextCorpusProbe}.java
+          javac -d build/audit-classes app/src/main/java/com/ghiles/quizubuntu/{VirtualMachine,CommandCatalog,ShellSyntax,TextCommands,TextFilters,S03Linux,S03VirtualBox,S03Windows}.java tools/{CatalogAuditProbe,DifferentialProbe,TextCorpusProbe}.java
           python3 tools/audit_catalogue.py
           python3 tools/differential_scenarios.py
 

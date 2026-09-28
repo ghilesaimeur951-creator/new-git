@@ -24,7 +24,9 @@ final class TextCommands {
                 String arg = words.get(i);
                 if (!end && arg.equals("--")) { end = true; continue; }
                 if (!end && arg.startsWith("-") && arg.length() > 1) {
-                    if ((name.equals("head") || name.equals("tail")) && (arg.equals("-n") || arg.equals("-c"))) {
+                    if ((name.equals("head") || name.equals("tail")) && arg.matches("-[0-9]+")) {
+                        count = Integer.parseInt(arg.substring(1));
+                    } else if ((name.equals("head") || name.equals("tail")) && (arg.equals("-n") || arg.equals("-c"))) {
                         bytes = arg.equals("-c");
                         count = Integer.parseInt(words.get(++i));
                         if (count < 0) throw new IllegalArgumentException("Le nombre doit être positif ou nul.");

@@ -45,7 +45,7 @@ public class MoreCommandsTest {
         vm.execute("mkdir -p listing/sub; touch listing/a; chmod 755 listing/a");
         assertEquals("a*\nsub/\n",vm.execute("ls -F listing | cat").text);
         assertEquals("sub\na\n",vm.execute("ls -r listing | cat").text);
-        assertTrue(vm.execute("ls -l listing | cat").text.contains("-rwxr-xr-x  a"));
+        assertTrue(vm.execute("ls -l listing | cat").text.contains("-rwxr-xr-x  ubuntu ubuntu  a"));
         assertEquals("listing:\na\nsub\n\nlisting/sub:\n",vm.execute("ls -R listing").text);
         assertEquals(2,vm.execute("ls absent").exitCode);
         assertNotEquals(0,vm.execute("ls --unknown").exitCode);

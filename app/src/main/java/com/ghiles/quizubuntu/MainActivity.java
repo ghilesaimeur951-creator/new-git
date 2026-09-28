@@ -236,6 +236,7 @@ public class MainActivity extends Activity {
         ));
         bank.addAll(PdfQuizBank.questions());
         bank.addAll(PdfPracticeBank.questions());
+        bank.addAll(S03QuizBank.questions());
         return bank;
     }
 
@@ -741,6 +742,22 @@ public class MainActivity extends Activity {
 
     private void showSourceIllustration(Question question) {
         sourceIllustration.removeAllViews();
+        if (question.category.equals("Permissions") || question.category.equals("ACL et droits spéciaux")) {
+            sourceIllustration.addView(card("PROPRIÉTAIRE  |  GROUPE  |  AUTRES\nrwx = 7         r-x = 5       --- = 0\nFichier : r lire · w modifier · x exécuter\nDossier : r lister · w modifier les entrées · x traverser\nCréation : mode maximal & ~umask\nSGID : groupe hérité · sticky : suppression protégée\nACL nommée : droits limités par le masque ACL"));
+            return;
+        }
+        if (question.category.equals("VirtualBox")) {
+            sourceIllustration.addView(card("createvm : configuration de la VM\nstoragectl : contrôleur SATA/IDE\ncreatemedium : disque virtuel\nstorageattach : disque/ISO raccordé au contrôleur\nmodifyvm : RAM, vidéo, réseau\nstartvm : démarrage\n2048 Mo de RAM = 2 Gio ; les modèles Android ne lancent pas d’OS invité."));
+            return;
+        }
+        if (question.category.equals("Windows")) {
+            sourceIllustration.addView(card("WINDOWS CMD : C:\\Users\\ubuntu\\Secured · dir\nLINUX BASH : /home/ubuntu/Secured · ls\ncd change de dossier dans les deux contextes.\nNTFS est un système de fichiers ; un chemin indique un emplacement."));
+            return;
+        }
+        if (question.category.equals("Utilisateurs")) {
+            sourceIllustration.addView(card("/etc/passwd : compte · UID · GID primaire · home · shell\n/etc/group : groupes et membres supplémentaires\n/etc/shadow : empreintes protégées\nusermod -aG : ajoute sans enlever les autres groupes\nid : vérifie le résultat · whoami : identité effective"));
+            return;
+        }
         if(!question.category.equals("Git")&&!question.category.equals("Branches")&&!question.category.equals("Conflits")) {
             sourceIllustration.addView(card(question.category.equals("SSH") ? "Clé privée : reste sur ton appareil. Clé publique (.pub) : se copie sur GitHub. Empreinte : identifie la clé sans la remplacer. Source : mémo Git/GitHub/SSH fourni." : "Observe l’exemple : quelle était la situation avant la commande ? Qu’est-ce qui a changé après ? Reprends la fiche du cours indiquée dans la correction."));
             return;
@@ -952,7 +969,7 @@ public class MainActivity extends Activity {
         addTitle(root, "Révision ciblée", 28);
         addBody(root, "Choisis un thème. Les questions restent basées sur tes supports de cours.", 15);
 
-        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits"};
+        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits","Utilisateurs","Permissions","ACL et droits spéciaux","VirtualBox","Windows"};
         for (String cat : cats) {
             Button b = secondaryFullButton(cat);
             b.setOnClickListener(v -> startCategoryQuiz(((Button) v).getText().toString()));
@@ -1318,7 +1335,7 @@ public class MainActivity extends Activity {
         }
 
         addSection(root, "Maîtrise par thème");
-        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits"};
+        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits","Utilisateurs","Permissions","ACL et droits spéciaux","VirtualBox","Windows"};
         for (String cat : cats) {
             int a = prefs.getInt("cat_answered_" + cat, 0);
             int c = prefs.getInt("cat_correct_" + cat, 0);

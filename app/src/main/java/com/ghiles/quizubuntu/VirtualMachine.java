@@ -33,6 +33,7 @@ public final class VirtualMachine {
         public final String name;
         public final boolean directory;
         public String permissions;
+        public String owner = "ubuntu", group = "ubuntu";
 
         FsEntry(String name, boolean directory) {
             this.name = name;
@@ -123,28 +124,28 @@ public final class VirtualMachine {
         }
     }
 
-    private final Set<String> directories = new LinkedHashSet<>();
-    private final Map<String,String> files = new LinkedHashMap<>();
+    final Set<String> directories = new LinkedHashSet<>();
+    final Map<String,String> files = new LinkedHashMap<>();
     private final List<String> commandHistory = new ArrayList<>();
-    private final Map<String,String> environment = new LinkedHashMap<>();
+    final Map<String,String> environment = new LinkedHashMap<>();
     private final Map<String,String> aliases = new LinkedHashMap<>();
     private final List<Map<String,String>> stashSnapshots = new ArrayList<>();
 
     private final List<String> directoryStack = new ArrayList<>();
-    private final Map<String,String> permissionModes = new LinkedHashMap<>();
-    private final Map<String,String> owners = new LinkedHashMap<>();
-    private final Map<String,String> groups = new LinkedHashMap<>();
+    final Map<String,String> permissionModes = new LinkedHashMap<>();
+    final Map<String,String> owners = new LinkedHashMap<>();
+    final Map<String,String> groups = new LinkedHashMap<>();
     private final Map<String,String> symbolicLinks = new LinkedHashMap<>();
     private final Map<String,Map<String,String>> archives = new LinkedHashMap<>();
-    private String umask = "0022";
+    String umask = "0022";
 
     private final Set<String> installedPackages = new LinkedHashSet<>(java.util.Arrays.asList("git", "bash", "coreutils", "openssh-client"));
     private final Map<String,Boolean> serviceRunning = new LinkedHashMap<>();
     private final Set<String> enabledServices = new LinkedHashSet<>();
     private final Map<Integer,String> processes = new LinkedHashMap<>();
 
-    private String cwd = "/home/ubuntu";
-    private String previousCwd = "/home/ubuntu";
+    String cwd = "/home/ubuntu";
+    String previousCwd = "/home/ubuntu";
 
     private boolean gitInitialized = false;
     private String repoRoot = "";
@@ -257,6 +258,7 @@ public final class VirtualMachine {
         sshPrivateKeyExists = false;
         sshAgentRunning = false;
         sshKeyLoaded = false;
+        course.reset(); virtualBox.reset(); windows.reset();
     }
 
     public String cwd() {
@@ -264,6 +266,7 @@ public final class VirtualMachine {
     }
 
     public String shortCwd() {
+        if (windows.active) return windows.cwd();
         if ("/home/ubuntu".equals(cwd)) return "~";
 
         if (cwd.startsWith("/home/ubuntu/")) {
@@ -282,11 +285,28 @@ public final class VirtualMachine {
     }
 
     public void saveEditedFile(String absolutePath, String content) {
+        course.writable(absolutePath);
+        Set<String> before = new LinkedHashSet<>(directories); before.addAll(files.keySet());
         ensureParentDirectories(absolutePath);
         files.put(absolutePath, content == null ? "" : content);
+        course.created(before);
     }
 
     public void prepareScenario(String key) {
+        if (key.equals("s03-windows")) { execute("cmd"); return; }
+        if (key.equals("s03-permissions") || key.equals("s03-acl")) {
+            execute("sudo useradd -m -s /bin/bash wilder");
+            execute("sudo groupadd groupetest");
+            execute("sudo usermod -aG groupetest wilder");
+            execute("sudo usermod -aG sudo wilder");
+            execute("su - wilder"); return;
+        }
+        if (key.equals("s03-vbox")) {
+            execute("touch ~/Documents/ubuntu.iso");
+            execute("VBoxManage createvm --name Template --ostype Ubuntu_64 --register");
+            execute("VBoxManage createmedium disk --filename '~/VirtualBox VMs/Template/template.vmdk' --size 30000 --format VMDK");
+            return;
+        }
         if ("fresh-git".equals(key)) {
             ensureDir("/home/ubuntu/projet");
             cwd = "/home/ubuntu/projet";
@@ -328,6 +348,9 @@ public final class VirtualMachine {
         }
     }
 
+    final S03Windows windows = new S03Windows();
+    final S03Linux course = new S03Linux(this);
+    final S03VirtualBox virtualBox = new S03VirtualBox(this);
     private int executionDepth;
     private String standardInput;
     private int lastExitCode;
@@ -336,6 +359,7 @@ public final class VirtualMachine {
         if (executionDepth >= 32) return Result.error("Expansion récursive : alias ou commande trop profonde.");
         if (executionDepth == 0 && raw != null && !raw.trim().isEmpty()) commandHistory.add(raw.trim());
         executionDepth++;
+        Set<String> before = new LinkedHashSet<>(directories); before.addAll(files.keySet());
         try {
             Result result = executeInternal(raw);
             lastExitCode = result.exitCode;
@@ -343,7 +367,7 @@ public final class VirtualMachine {
         }
         catch (IllegalArgumentException ex) { lastExitCode = 1; return Result.error(ex.getMessage()); }
         catch (IndexOutOfBoundsException ex) { lastExitCode = 1; return Result.error("Arguments incomplets : consulte help pour la syntaxe."); }
-        finally { executionDepth--; }
+        finally { course.created(before); executionDepth--; }
     }
 
     private Result executeInternal(String raw) {
@@ -351,6 +375,12 @@ public final class VirtualMachine {
 
         if (command.isEmpty()) return Result.normal("");
 
+        if (command.endsWith(" 2>/dev/null")) {
+            Result hidden = execute(command.substring(0, command.length()-12));
+            return Result.status(outputOf(hidden), hidden.exitCode);
+        }
+        Result windowsResult = windows.handle(command);
+        if (windowsResult != null) return windowsResult;
         List<String> sequence = ShellSyntax.operators(command, ";");
         if (sequence.size() > 1) return executeSequence(sequence, false);
         List<String> conditional = ShellSyntax.operators(command, "&&", "||");
@@ -423,6 +453,10 @@ public final class VirtualMachine {
         }
         if ("clear".equals(n)) return Result.clear();
 
+        Result courseResult = course.handle(command, ShellSyntax.words(command));
+        if (courseResult != null) return courseResult;
+        Result boxResult = virtualBox.handle(ShellSyntax.words(command));
+        if (boxResult != null) return boxResult;
         if ("id -u".equals(n) || "id -g".equals(n)) return Result.normal("1000\n");
         if ("date +%f".equals(n)) return Result.normal(new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT).format(new Date())+"\n");
         if ("history".equals(n) || n.startsWith("history ")) {
@@ -733,9 +767,11 @@ public final class VirtualMachine {
                 String path = resolve(paths.get(0));
                 if (parts.get(i).equals("<")) {
                     if (!files.containsKey(path)) return Result.error("bash: fichier d'entrée absent");
+                    course.require(path, 4);
                     standardInput = files.get(path);
                 } else {
                     if (!directories.contains(parent(path)) || directories.contains(path)) return Result.error("bash: destination invalide");
+                    course.writable(path);
                     outputPath = path;
                     append = parts.get(i).equals(">>");
                     if (!append || !files.containsKey(path)) files.put(path, "");
@@ -918,6 +954,7 @@ public final class VirtualMachine {
             String destination = symbolicLinks.get(path);
             path = resolve(destination.startsWith("/") ? destination : parent(path) + "/" + destination);
         }
+        course.require(path, 4);
         return files.get(path);
     }
 
@@ -1230,15 +1267,20 @@ public final class VirtualMachine {
             Set<String> paths=new LinkedHashSet<>(); paths.addAll(directories); paths.addAll(files.keySet());
             StringBuilder out=new StringBuilder();
             for(String path:paths) {
-                if(!path.equals(root)&&!path.startsWith(root+"/")) continue;
-                String relative=path.equals(root)?"":path.substring(root.length()+1);
+                if(!path.equals(root)&&!path.startsWith(root.equals("/")?"/":root+"/")) continue;
+                String relative=path.equals(root)?"":path.substring(root.equals("/")?1:root.length()+1);
                 int depth=relative.isEmpty()?0:relative.split("/").length;
                 if(depth<minimum||depth>maximum) continue;
                 boolean directory=directories.contains(path);
                 if(type!=null&&((type.equals("f")&&directory)||(type.equals("d")&&!directory))) continue;
                 if(pattern!=null&&!simpleGlob(ignoreCase?pattern.toLowerCase(Locale.ROOT):pattern,ignoreCase?baseName(path).toLowerCase(Locale.ROOT):baseName(path))) continue;
                 if(empty&&(directory?!childrenOf(path,true).isEmpty():!files.get(path).isEmpty())) continue;
-                if(permissions!=null&&!permissionModes.getOrDefault(path,directory?"755":"644").equals(permissions)) continue;
+                if(permissions!=null) {
+                    String number=permissions.replaceFirst("^[-/]", "");
+                    if(!number.matches("[0-7]{3,4}")) return Result.error("find: mode invalide");
+                    int requested=Integer.parseInt(number,8), actual=course.mode(path);
+                    if(permissions.startsWith("-") ? (actual & requested)!=requested : permissions.startsWith("/") ? (actual & requested)==0 : actual!=requested) continue;
+                }
                 if(size!=null) {
                     java.util.regex.Matcher matcher=java.util.regex.Pattern.compile("([+-]?)([0-9]+)([ck]?)").matcher(size);
                     if(!matcher.matches()) return Result.error("find: taille invalide");
@@ -1247,7 +1289,7 @@ public final class VirtualMachine {
                     long amount=(bytes+unit-1)/unit,limit=Long.parseLong(matcher.group(2));
                     if(matcher.group(1).equals("+")?amount<=limit:matcher.group(1).equals("-")?amount>=limit:amount!=limit) continue;
                 }
-                out.append(start).append(relative.isEmpty()?"":"/"+relative).append('\n');
+                out.append(start).append(relative.isEmpty()?"":start.equals("/")?relative:"/"+relative).append('\n');
             }
             return Result.normal(out.toString());
         }
@@ -3171,7 +3213,7 @@ public final class VirtualMachine {
 
     private String lsLine(FsEntry entry, StringBuilder flags) {
         String suffix = flags.indexOf("F") < 0 ? "" : entry.directory ? "/" : entry.permissions.contains("x") ? "*" : "";
-        return (flags.indexOf("l") >= 0 ? entry.permissions + "  " : "") + entry.name + suffix;
+        return (flags.indexOf("l") >= 0 ? entry.permissions + "  " + entry.owner + " " + entry.group + "  " : "") + entry.name + suffix;
     }
 
     private void appendLsDirectory(StringBuilder out, String operand, List<FsEntry> entries, StringBuilder flags,
@@ -3211,7 +3253,11 @@ public final class VirtualMachine {
         int mode = Integer.parseInt(permissionModes.getOrDefault(path, directory ? "755" : "644"), 8);
         StringBuilder bits = new StringBuilder(directory ? "d" : "-");
         for (int bit = 8; bit >= 0; bit--) bits.append((mode & (1 << bit)) == 0 ? '-' : "xwr".charAt(bit % 3));
-        entry.permissions = bits.toString();
+        if ((mode & 04000) != 0) bits.setCharAt(3, (mode & 0100) != 0 ? 's' : 'S');
+        if ((mode & 02000) != 0) bits.setCharAt(6, (mode & 0010) != 0 ? 's' : 'S');
+        if ((mode & 01000) != 0) bits.setCharAt(9, (mode & 0001) != 0 ? 't' : 'T');
+        entry.permissions = bits.toString() + (course.acls.containsKey(path) ? "+" : "");
+        entry.owner = course.owner(path); entry.group = course.group(path);
         return entry;
     }
 
@@ -3423,14 +3469,14 @@ public final class VirtualMachine {
             "Le terminal est simulé : aucune commande arbitraire n'est exécutée sur Android.";
     }
 
-    private String resolve(String raw) {
+    String resolve(String raw) {
         String value = stripQuotes(raw.trim());
 
         if (value.isEmpty()) return cwd;
-        if ("~".equals(value)) return "/home/ubuntu";
+        if ("~".equals(value)) return environment.getOrDefault("HOME", "/home/ubuntu");
 
         if (value.startsWith("~/")) {
-            value = "/home/ubuntu/" + value.substring(2);
+            value = environment.getOrDefault("HOME", "/home/ubuntu") + "/" + value.substring(2);
         }
 
         String path;
@@ -3461,7 +3507,7 @@ public final class VirtualMachine {
         return "/" + String.join("/", stack);
     }
 
-    private String parent(String path) {
+    String parent(String path) {
         if (path == null || path.isEmpty() || "/".equals(path)) return "/";
 
         int index = path.lastIndexOf('/');
@@ -3470,7 +3516,7 @@ public final class VirtualMachine {
         return path.substring(0, index);
     }
 
-    private void ensureDir(String path) {
+    void ensureDir(String path) {
         String normalized = normalizePath(path);
 
         if ("/".equals(normalized)) {

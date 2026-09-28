@@ -86,7 +86,7 @@ public class SimulatorActivity extends Activity {
         }
     }
 
-    private final List<Scenario> scenarios = Arrays.asList(
+    private final List<Scenario> scenarios = new ArrayList<>(Arrays.asList(
         new Scenario(
             "Où suis-je ?",
             "Affiche le chemin absolu du dossier courant.",
@@ -346,7 +346,7 @@ public class SimulatorActivity extends Activity {
             },
             "git log --graph --oneline --decorate --all"
         )
-    );
+    ));
 
     private SharedPreferences prefs;
     private VirtualMachine vm;
@@ -528,6 +528,11 @@ public class SimulatorActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        scenarios.add(new Scenario("S03 · Comptes et groupes", "Atelier libre : crée wilder1, wilder2 et wilder3, puis groupetest et groupeadmin. Répartis les groupes comme dans le PDF et vérifie avec id et cat /etc/group. Commence avec sudo -i si tu veux travailler comme root.", "useradd -m -s /bin/bash wilder1 ; groupadd groupetest ; usermod -aG groupetest wilder1", "s03-users", new String[0]));
+        scenarios.add(new Scenario("S03 · Permissions", "Atelier libre : wilder et groupetest existent. Crée projet-wilder avec confidentiel.txt (600), partage.txt (444) et executable.sh (755). Compare les notations symbolique et octale avec ls -l. Essaie aussi de retirer x à un dossier.", "chmod u=rwx,g=rx,o= test.txt ; sudo chown root:groupetest test.txt", "s03-permissions", new String[0]));
+        scenarios.add(new Scenario("S03 · ACL, umask et droits spéciaux", "Atelier libre : crée partage-equipe pour groupetest, active SGID et sticky bit puis donne un accès r-x à un autre utilisateur par ACL. Vérifie avec ls -ld, getfacl et su. Essaie umask 077 puis touch secret.txt.", "sudo chown wilder:groupetest partage-equipe ; chmod 3770 partage-equipe ; setfacl -m u:invite:rx partage-equipe", "s03-acl", new String[0]));
+        scenarios.add(new Scenario("S03 · VirtualBox en CLI", "Atelier libre : crée Ubuntu10, RAM 2048 Mo, vidéo 16 Mo, VMSVGA, contrôleur SATA et disque VMDK de 30000 Mo, lecteur IDE avec ~/Documents/ubuntu.iso et réseau NAT. Le disque modèle est ~/VirtualBox VMs/Template/template.vmdk. Les VM et disques sont pédagogiques : aucun OS invité ne démarre sur Android.", "VBoxManage createvm --name Ubuntu10 --ostype Ubuntu_64 --register ; VBoxManage modifyvm Ubuntu10 --memory 2048 --vram 16 --graphicscontroller VMSVGA", "s03-vbox", new String[0]));
+        scenarios.add(new Scenario("S03 · Terminal Windows", "Atelier CMD virtuel distinct de Linux : crée Secured dans C:\\Users\\ubuntu, entre dedans, crée un fichier avec echo Bonjour > note.txt et affiche le contenu avec dir et type note.txt. Les ACL NTFS du challenge sont expliquées dans le quiz. exit revient à Ubuntu.", "mkdir Secured ; cd Secured ; dir. Sous Windows, les chemins utilisent des antislashs et une lettre de lecteur.", "s03-windows", new String[0]));
         prefs = getSharedPreferences("quiz_progress", MODE_PRIVATE);
         vm = new VirtualMachine();
         tokenStore = new SecureTokenStore(this);
@@ -752,6 +757,19 @@ public class SimulatorActivity extends Activity {
 
     private void addObjectivePanel() {
         objectivePanel = panel(Color.rgb(247, 244, 247), 13);
+        Button coursePicker = smallButton("Ateliers S03 · choisir un support");
+        coursePicker.setOnClickListener(v -> {
+            String[] names = {"Comptes et groupes", "Permissions", "ACL et droits spéciaux", "VirtualBox", "Windows"};
+            new AlertDialog.Builder(this).setTitle("Supports S03 — pratique virtuelle").setItems(names, (dialog, which) -> {
+                if (commandBusy || awaitingToken) return;
+                scenarioIndex = scenarios.size() - 5 + which;
+                preparedScenario = -1;
+                typingMode = true;
+                setGuidedMode(true);
+            }).show();
+        });
+        objectivePanel.addView(coursePicker);
+
 
         TextView label = terminalText("OBJECTIF", 10, true, UBUNTU_ORANGE);
         objectivePanel.addView(label);
@@ -1310,7 +1328,7 @@ public class SimulatorActivity extends Activity {
             return;
         }
 
-        if (typingMode) {
+        if (typingMode || scenarios.get(scenarioIndex).accepted.isEmpty()) {
             interactionLabel.setText("MISSION : écris la commande");
             commandBar.setVisibility(View.VISIBLE);
             commandInput.setVisibility(View.VISIBLE);
@@ -1416,7 +1434,7 @@ public class SimulatorActivity extends Activity {
 
                 if (longFormat) {
                     appendPlain(
-                        entry.permissions + "  ",
+                        entry.permissions + "  " + entry.owner + " " + entry.group + "  ",
                         TERMINAL_MUTED
                     );
                 }
@@ -1450,6 +1468,7 @@ public class SimulatorActivity extends Activity {
 
     private void evaluateMission(String command) {
         Scenario scenario = scenarios.get(scenarioIndex);
+        if (scenario.accepted.isEmpty()) return; // Open S03 labs are not auto-graded by command spelling.
         String normalized = normalize(command);
 
         boolean correct = false;
@@ -2174,7 +2193,7 @@ public class SimulatorActivity extends Activity {
     private void updateCommandPrompt() {
         if (commandPromptView == null) return;
 
-        String userHost = "ubuntu@academy";
+        String userHost = realEnvironment ? "ubuntu@academy" : vm.course.current + "@academy";
 
         String path = realEnvironment
             ? realGit.displayPath()
@@ -2192,7 +2211,7 @@ public class SimulatorActivity extends Activity {
     }
 
     private void appendPrompt(String command) {
-        String userHost = "ubuntu@academy";
+        String userHost = realEnvironment ? "ubuntu@academy" : vm.course.current + "@academy";
 
         String path = realEnvironment
             ? realGit.displayPath()
