@@ -96,25 +96,16 @@ public final class GitHubApiClient {
     }
 
     public List<RepoInfo> listRepositories() throws Exception {
-        String json = get(
-            "https://api.github.com/user/repos" +
-            "?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member"
-        );
-
-        JSONArray array = new JSONArray(json);
         List<RepoInfo> result = new ArrayList<>();
-
-        for (int i = 0; i < array.length(); i++) {
-            JSONObject repo = array.getJSONObject(i);
-
-            result.add(
-                new RepoInfo(
-                    repo.optString("full_name"),
-                    repo.optString("clone_url"),
-                    repo.optString("default_branch", "main"),
-                    repo.optBoolean("private", false)
-                )
-            );
+        for (int page = 1; ; page++) {
+            JSONArray array = new JSONArray(get("https://api.github.com/user/repos" +
+                "?per_page=100&sort=full_name&affiliation=owner,collaborator,organization_member&page=" + page));
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject repo = array.getJSONObject(i);
+                result.add(new RepoInfo(repo.optString("full_name"), repo.optString("clone_url"),
+                    repo.optString("default_branch", "main"), repo.optBoolean("private", false)));
+            }
+            if (array.length() < 100) break;
         }
 
         return result;

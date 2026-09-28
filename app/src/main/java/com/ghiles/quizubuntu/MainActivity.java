@@ -78,7 +78,10 @@ public class MainActivity extends Activity {
         new LevelInfo(5, "Synchronisation et conflits", "Rebase, merge, marqueurs et résolution de conflits.")
     );
 
-    private final List<Question> questions = Arrays.asList(
+    private final List<Question> questions = buildQuestions();
+
+    private static List<Question> buildQuestions() {
+        List<Question> bank = new ArrayList<>(Arrays.asList(
         q(1,"Bash","Quelle commande affiche le chemin absolu du dossier courant ?",0,
             "pwd signifie Print Working Directory et affiche le chemin courant.",
             "$ pwd\n/home/ghiles/dossier-git",
@@ -227,7 +230,10 @@ public class MainActivity extends Activity {
             "Git compare l'ancêtre commun BASE, notre version OURS et la version entrante THEIRS.",
             "BASE\n /  \\\nOURS  THEIRS",
             "Parce que Git crée toujours trois commits","Parce qu'il faut trois branches distantes","Parce que trois utilisateurs doivent valider","Parce que Git examine BASE, OURS et THEIRS")
-    );
+        ));
+        bank.addAll(PdfQuizBank.questions());
+        return bank;
+    }
 
     private static Question q(int level, String category, String text, int correctIndex,
                               String explanation, String example, String... options) {
@@ -236,6 +242,9 @@ public class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private List<Question> quiz = new ArrayList<>();
+    private final List<Integer> answerOrder = new ArrayList<>();
+    private final List<String> examCorrections = new ArrayList<>();
+    private ProgressBarView questionProgress;
     private int activeLevel = 1;
     private int currentIndex = 0;
     private int correctCount = 0;
@@ -509,7 +518,7 @@ public class MainActivity extends Activity {
         progressView.setPadding(0, 0, 0, dp(8));
         root.addView(progressView);
 
-        ProgressBarView questionProgress = new ProgressBarView(this, isDark());
+        questionProgress = new ProgressBarView(this, isDark());
         questionProgress.setProgress(quiz.isEmpty() ? 0 : ((currentIndex + 1) * 100 / quiz.size()));
         root.addView(questionProgress, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(9)
@@ -553,6 +562,10 @@ public class MainActivity extends Activity {
     private void renderQuestion() {
         Question q = quiz.get(currentIndex);
         answered = false;
+        answerOrder.clear();
+        for (int i = 0; i < q.options.size(); i++) answerOrder.add(i);
+        Collections.shuffle(answerOrder);
+        questionProgress.setProgress((currentIndex + 1) * 100 / quiz.size());
 
         categoryView.setText(q.category + "  •  difficulté " + q.level);
         progressView.setText("Question " + (currentIndex + 1) + " / " + quiz.size() +
@@ -566,7 +579,7 @@ public class MainActivity extends Activity {
 
         for (int i = 0; i < optionButtons.size(); i++) {
             Button button = optionButtons.get(i);
-            button.setText(q.options.get(i));
+            button.setText(q.options.get(answerOrder.get(i)));
             button.setEnabled(true);
             styleAnswerNeutral(button);
         }
@@ -575,6 +588,8 @@ public class MainActivity extends Activity {
     private void answer(int index) {
         if (answered) return;
         answered = true;
+        int selectedButton = index;
+        index = answerOrder.get(index);
 
         Question q = quiz.get(currentIndex);
         boolean isCorrect = index == q.correctIndex;
@@ -582,10 +597,11 @@ public class MainActivity extends Activity {
         recordDailyAnswer();
         recordCategoryResult(q.category, isCorrect);
         if (index >= 0 && index < optionButtons.size()) {
-            optionButtons.get(index).performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            optionButtons.get(selectedButton).performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
         }
 
         if (examMode) {
+            examCorrections.add((isCorrect ? "✓ " : "✗ ") + q.text + "\nTa réponse : " + q.options.get(index) + "\nRéponse : " + q.options.get(q.correctIndex) + "\n" + q.explanation);
             Set<String> examWrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
             int answeredTotalExam = prefs.getInt("answeredTotal", 0) + 1;
             int correctTotalExam = prefs.getInt("correctTotal", 0);
@@ -665,9 +681,9 @@ public class MainActivity extends Activity {
         for (int i = 0; i < optionButtons.size(); i++) {
             Button button = optionButtons.get(i);
             button.setEnabled(false);
-            if (i == q.correctIndex) {
+            if (answerOrder.get(i) == q.correctIndex) {
                 styleAnswerCorrect(button);
-            } else if (i == index && !isCorrect) {
+            } else if (i == selectedButton && !isCorrect) {
                 styleAnswerWrong(button);
             } else {
                 styleAnswerMuted(button);
@@ -720,6 +736,8 @@ public class MainActivity extends Activity {
             17
         );
 
+        if (examMode) for (String correction : examCorrections) root.addView(card(correction), spaced(10));
+
         String message;
         if (reviewMode) {
             int remaining = prefs.getStringSet("wrongQuestions", Collections.emptySet()).size();
@@ -744,6 +762,7 @@ public class MainActivity extends Activity {
         replay.setOnClickListener(v -> {
             if (reviewMode) startReviewErrors();
             else if (customMode && examMode) startExam();
+            else if (customMode && "ENTRAÎNEMENT ADAPTATIF".equals(customModeTitle)) startAdaptiveQuiz();
             else if (customMode) startQuickQuiz();
             else startLevel(activeLevel);
         });
@@ -779,9 +798,16 @@ public class MainActivity extends Activity {
     }
 
     private void startExam() {
-        List<Question> pool = new ArrayList<>(questions);
+        examCorrections.clear();
+        List<Question> pool = new ArrayList<>();
+        for (int level = 1; level <= 5; level++) {
+            List<Question> candidates = new ArrayList<>();
+            for (Question question : questions) if (question.level == level) candidates.add(question);
+            Collections.shuffle(candidates);
+            pool.addAll(candidates.subList(0, Math.min(4, candidates.size())));
+        }
         Collections.shuffle(pool);
-        quiz = new ArrayList<>(pool.subList(0, Math.min(20, pool.size())));
+        quiz = pool;
         reviewMode = false;
         customMode = true;
         examMode = true;
@@ -798,6 +824,11 @@ public class MainActivity extends Activity {
         Set<String> wrong = prefs.getStringSet("wrongQuestions", Collections.emptySet());
         List<Question> pool = new ArrayList<>();
         for (Question q : questions) if (wrong.contains(q.text)) pool.add(q);
+        Collections.shuffle(pool);
+        pool.sort((a, b) -> Integer.compare(
+            prefs.getInt("mistake_" + Math.abs(b.text.hashCode()), 0),
+            prefs.getInt("mistake_" + Math.abs(a.text.hashCode()), 0)));
+        if (pool.size() > 8) pool = new ArrayList<>(pool.subList(0, 8));
         List<Question> rest = new ArrayList<>(questions);
         Collections.shuffle(rest);
         for (Question q : rest) {

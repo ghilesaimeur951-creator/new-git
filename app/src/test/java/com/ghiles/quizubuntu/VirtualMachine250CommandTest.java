@@ -160,16 +160,16 @@ public class VirtualMachine250CommandTest {
 
         vm.execute("touch README.md");
         vm.execute("echo \"Bonjour\" > README.md");
-        assertEquals("Bonjour", vm.execute("cat README.md").text);
+        assertEquals("Bonjour\n", vm.execute("cat README.md").text);
 
         vm.execute("echo \"Suite\" >> README.md");
         assertTrue(vm.execute("cat README.md").text.contains("Suite"));
 
         vm.execute("cp README.md copie.md");
-        assertEquals("Bonjour\nSuite", vm.execute("cat copie.md").text);
+        assertEquals("Bonjour\nSuite\n", vm.execute("cat copie.md").text);
 
         vm.execute("mv copie.md archive.md");
-        assertEquals("Bonjour\nSuite", vm.execute("cat archive.md").text);
+        assertEquals("Bonjour\nSuite\n", vm.execute("cat archive.md").text);
 
         vm.execute("rm archive.md");
         assertTrue(vm.execute("cat archive.md").text.contains("Aucun fichier"));

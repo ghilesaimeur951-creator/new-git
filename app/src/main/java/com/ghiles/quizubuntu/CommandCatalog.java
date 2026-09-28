@@ -292,31 +292,32 @@ public final class CommandCatalog {
         addGeneratedOptions(out, seen, "Git stash", "git stash",
             new String[]{"push","push -m 'wip'","list","show","show -p","apply","apply stash@{0}","pop","drop","clear","branch test stash@{0}"});
 
-        // Guarantee a catalogue comfortably above 500 signatures by combining
-        // common read-only flags with families that accept them in practice.
-        String[] genericBases = {
-            "ls","grep","find","sort","wc","head","tail","du","df","ps","ip","ss",
-            "git status","git branch","git log","git diff","git fetch","git remote",
-            "git tag","git stash","git show","git reflog","git rev-parse"
-        };
-        String[] genericSuffixes = {
-            "--help","--version","--verbose","--quiet","--no-color","--color=auto",
-            "--debug","--dry-run","-h","-v","-q","--"
-        };
-
-        for (String base : genericBases) {
-            for (String suffix : genericSuffixes) {
-                add(
-                    out,
-                    seen,
-                    base.startsWith("git ") ? "Git catalogue" : "Ubuntu catalogue",
-                    base + " " + suffix,
-                    "Variante de catalogue pour explorer options et comportement de " + base + "."
-                );
+        // Valid, executable combinations. Never append arbitrary flags to unrelated commands.
+        textVariants(out, seen, "grep", "ivncxFws", " Git README.md");
+        textVariants(out, seen, "grep", "ivncxFws", " -h Git README.md");
+        textVariants(out, seen, "grep", "ivncxFws", " -H Git README.md");
+        textVariants(out, seen, "sort", "nrufbds", " README.md");
+        textVariants(out, seen, "cat", "nbsETv", " README.md");
+        textVariants(out, seen, "wc", "lwcm", " README.md");
+        for (String base : new String[]{"head", "tail"}) {
+            for (String unit : new String[]{"-n", "-c"}) {
+                for (int limit : new int[]{1, 5, 10, 20, 40, 50, 80, 100, 200, 500}) {
+                    add(out, seen, "Texte exécutable", base + " " + unit + " " + limit + " README.md",
+                        (base.equals("head") ? "Début" : "Fin") + " du fichier : " + limit + (unit.equals("-n") ? " lignes." : " octets UTF-8."));
+                }
             }
         }
 
         return out;
+    }
+
+    private static void textVariants(List<Entry> out, Set<String> seen, String base, String flags, String suffix) {
+        for (int mask = 0; mask < (1 << flags.length()); mask++) {
+            StringBuilder option = new StringBuilder();
+            for (int bit = 0; bit < flags.length(); bit++) if ((mask & (1 << bit)) != 0) option.append(flags.charAt(bit));
+            add(out, seen, "Texte exécutable", base + (option.length() == 0 ? "" : " -" + option) + suffix,
+                "Exécuter " + base + " sur le fichier virtuel. Options combinées : " + (option.length() == 0 ? "aucune" : option) + ". Voir le guide des options.");
+        }
     }
 
     private static void addVariants(
@@ -375,7 +376,6 @@ public final class CommandCatalog {
         return value == null
             ? ""
             : value.trim()
-                .replaceAll("\\s+", " ")
-                .toLowerCase(Locale.ROOT);
+                .replaceAll("\\s+", " ");
     }
 }

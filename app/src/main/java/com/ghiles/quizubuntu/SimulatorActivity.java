@@ -660,6 +660,25 @@ public class SimulatorActivity extends Activity {
 
         realControls.addView(second);
 
+        Button openGitHub = smallButton("Voir le dépôt sur GitHub");
+        openGitHub.setOnClickListener(v -> {
+            String name = realGit.selectedRepositoryName();
+            if (name.isEmpty()) { chooseRepository(); return; }
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/" + name)));
+        });
+        realControls.addView(openGitHub);
+        Button syncGuide = smallButton("Téléphone ↔ ordinateur : mode d’emploi");
+        syncGuide.setOnClickListener(v -> new AlertDialog.Builder(this)
+            .setTitle("Le même dépôt, sur tes deux appareils")
+            .setMessage("1. Connecte ton compte GitHub, sélectionne ton dépôt puis clone-le ici.\n\n" +
+                "2. Sur l’ordinateur, ouvre ce même dépôt sur github.com avec le même compte.\n\n" +
+                "3. Sur le téléphone : nano README.md, puis git add README.md, git commit -m \"Mon changement\" et git push. Actualise la page GitHub sur l’ordinateur.\n\n" +
+                "4. Après une modification sur GitHub, saisis git pull sur le téléphone pour la récupérer.\n\n" +
+                "Les changements restent locaux jusqu’au push. Les exercices du mode Simulation restent virtuels.")
+            .setPositiveButton("Compris", null).show());
+        realControls.addView(syncGuide);
+
+
         LinearLayout sshRow = new LinearLayout(this);
         sshRow.setOrientation(LinearLayout.HORIZONTAL);
         sshRow.setPadding(0, dp(6), 0, 0);
@@ -1365,24 +1384,6 @@ public class SimulatorActivity extends Activity {
     private void runCommand(String command) {
         if (command == null || command.trim().isEmpty()) return;
 
-        // In Terminal libre, real SSH/GitHub commands automatically promote
-        // the session to the real Git/SSH sandbox. This is the workflow the
-        // user expects when typing ssh-keygen, ssh -T, git pull, git push...
-        if (!realEnvironment &&
-            !guidedMode &&
-            shouldPromoteToRealGitSsh(command)) {
-
-            appendSystem(
-                "[bascule] Cette commande demande une identité Git/SSH réelle. " +
-                "Ubuntu Lab passe dans l'espace Git/SSH réel de l'application."
-            );
-
-            setEnvironment(true);
-            appendPrompt(command);
-            runRealCommandAsync(command);
-            return;
-        }
-
         appendPrompt(command);
 
         if (realEnvironment) {
@@ -1404,26 +1405,6 @@ public class SimulatorActivity extends Activity {
         updateCommandPrompt();
         refreshTerminal();
         scrollBottom();
-    }
-
-    private boolean shouldPromoteToRealGitSsh(String command) {
-        String n = normalize(command);
-
-        return n.startsWith("ssh-keygen -t ed25519") ||
-            n.startsWith("ssh-add ") ||
-            n.equals("ssh -t git@github.com") ||
-            n.startsWith("eval \"$(ssh-agent -s)\"") ||
-            n.startsWith("cat ~/.ssh/id_ed25519.pub") ||
-            n.startsWith("ssh-keygen -lf ~/.ssh/id_ed25519.pub") ||
-            n.equals("ls -al ~/.ssh") ||
-            n.equals("ls -la ~/.ssh") ||
-            n.startsWith("git clone ") ||
-            n.startsWith("git fetch") ||
-            n.startsWith("git pull") ||
-            n.startsWith("git push") ||
-            n.startsWith("git ls-remote") ||
-            n.startsWith("git remote add origin git@github.com:") ||
-            n.startsWith("git remote set-url origin git@github.com:");
     }
 
     private void renderVirtualResult(
@@ -1731,6 +1712,7 @@ public class SimulatorActivity extends Activity {
                     );
                     refreshTerminal();
                     refreshRealStatusTextOnly();
+                    if (realGit.selectedRepositoryName().isEmpty()) chooseRepository();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {

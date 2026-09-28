@@ -437,6 +437,7 @@ public final class RealGitClient {
 
                 if (".".equals(pattern)) {
                     git.add().addFilepattern(".").call();
+                    git.add().addFilepattern(".").setUpdate(true).call();
                 } else {
                     git.add().addFilepattern(pattern).call();
                 }
@@ -486,31 +487,29 @@ public final class RealGitClient {
                     ".";
             }
 
-            if ("git pull origin main".equals(command)) {
-                PullCommand pull = git.pull()
-                    .setRemote("origin")
-                    .setRemoteBranchName("main");
-
-                configureTransport(pull, originUrl(repository));
+            if (command.equals("git pull") || command.startsWith("git pull ")) {
+                List<String> args = ShellSyntax.words(command);
+                String remote = "origin", branch = repository.getBranch();
+                boolean rebase = false, ffOnly = false;
+                int positional = 0;
+                for (int i = 2; i < args.size(); i++) {
+                    String arg = args.get(i);
+                    if (arg.equals("--rebase")) rebase = true;
+                    else if (arg.equals("--no-rebase")) rebase = false;
+                    else if (arg.equals("--ff-only")) ffOnly = true;
+                    else if (arg.startsWith("-")) return "Option pull non prise en charge : " + arg;
+                    else if (positional++ == 0) remote = arg;
+                    else if (positional == 2) branch = arg;
+                    else return "Usage : git pull [--rebase|--ff-only] [remote branche]";
+                }
+                PullCommand pull = git.pull().setRemote(remote).setRemoteBranchName(branch).setRebase(rebase);
+                if (ffOnly) pull.setFastForward(org.eclipse.jgit.api.MergeCommand.FastForwardMode.FF_ONLY);
+                String url = repository.getConfig().getString("remote", remote, "url");
+                if (url == null) return "Remote inconnu : " + remote;
+                configureTransport(pull, url);
                 PullResult result = pull.call();
-
-                return describePull(result) +
-                    "\nTransport réel : " +
-                    transportLabel(originUrl(repository));
-            }
-
-            if ("git pull --rebase origin main".equals(command)) {
-                PullCommand pull = git.pull()
-                    .setRemote("origin")
-                    .setRemoteBranchName("main")
-                    .setRebase(true);
-
-                configureTransport(pull, originUrl(repository));
-                PullResult result = pull.call();
-
-                return describePull(result) +
-                    "\nTransport réel : " +
-                    transportLabel(originUrl(repository));
+                return result.isSuccessful() ? "Pull terminé : " + remote + "/" + branch
+                    : "Pull à terminer : inspecte git status et résous les conflits avant de publier.";
             }
 
             if ("git push".equals(command)) {
