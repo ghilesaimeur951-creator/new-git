@@ -1,0 +1,9 @@
+Illustrations included unchanged from Pro Git (second edition), Scott Chacon and Ben Straub, Apress, and contributors.
+License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported.
+https://creativecommons.org/licenses/by-nc-sa/3.0/
+https://git-scm.com/book/en/v2
+Sources retrieved 2026-09-28:
+https://github.com/progit/progit2/blob/main/images/areas.svg
+https://github.com/progit/progit2/blob/main/images/basic-merging-1.svg
+Original SVGs unchanged. French explanatory captions in the application are additions.
+These illustrations remain under their original license; this notice does not relicense other application code.
