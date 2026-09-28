@@ -1800,7 +1800,7 @@ public class SimulatorActivity extends Activity {
                 );
 
                 appendPlain(
-                    "[GitHub réel] origin = " + selected.fullName + "\n",
+                    "[GitHub réel] Dépôt sélectionné pour clonage : " + selected.fullName + "\n",
                     SUCCESS_GREEN
                 );
 

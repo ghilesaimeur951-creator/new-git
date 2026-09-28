@@ -29,12 +29,13 @@ public class RealSyncRoundTripTest {
             phone.execute("mkdir 'mon projet'");phone.execute("cd 'mon projet'");
             try(Git local=Git.init().setInitialBranch("main").setDirectory(phone.currentDirectory()).call()) {
                 identity(local);
+                local.remoteAdd().setName("origin").setUri(new org.eclipse.jgit.transport.URIish(remote.toURI().toString())).call();
                 phone.execute("mkdir documents");phone.execute("touch 'documents/été notes.txt'");
                 phone.execute("echo 'Bonjour depuis le téléphone 🙂' > 'documents/été notes.txt'");
                 phone.execute("echo 'Deuxième ligne' >> 'documents/été notes.txt'");
                 String original=phone.read("documents/été notes.txt");
                 commit(local,"Depuis téléphone");
-                String confirmation=RealSyncResults.requireAccepted(local.push().setRemote(remote.toURI().toString()).add("main").call());
+                String confirmation=RealSyncResults.requireAccepted(local.push().setRemote("origin").add("main").call());
                 assertTrue(confirmation.contains("envoyé"));
                 File computerDir=new File(temp.getRoot(),"computer");
                 try(Git computer=Git.cloneRepository().setURI(remote.toURI().toString()).setDirectory(computerDir).call()) {
@@ -45,15 +46,15 @@ public class RealSyncRoundTripTest {
                     commit(computer,"Depuis ordinateur");
                     RealSyncResults.requireAccepted(computer.push().setRemote("origin").add("main").call());
                     ObjectId before=local.getRepository().resolve("HEAD");
-                    assertTrue(local.pull().setRemote(remote.toURI().toString()).setRemoteBranchName("main").call().isSuccessful());
+                    assertTrue(local.pull().setRemote("origin").setRebase(false).setRemoteBranchName("main").call().isSuccessful());
                     assertEquals("Modification depuis ordinateur\n",phone.execute("cat 'documents/été notes.txt'"));
                     assertTrue(RealSyncResults.changedFiles(local.getRepository(),before,local.getRepository().resolve("HEAD")).contains("documents/été notes.txt"));
                     phone.write("documents/été notes.txt","Sauvegarde éditeur réel\n",false);
                     // A push cannot send an uncommitted edit.
-                    assertTrue(RealSyncResults.requireAccepted(local.push().setRemote(remote.toURI().toString()).add("main").call()).contains("déjà à jour"));
+                    assertTrue(RealSyncResults.requireAccepted(local.push().setRemote("origin").add("main").call()).contains("déjà à jour"));
                     assertEquals("Modification depuis ordinateur\n",new String(Files.readAllBytes(actual.toPath()),StandardCharsets.UTF_8));
                     commit(local,"Éditeur téléphone");
-                    RealSyncResults.requireAccepted(local.push().setRemote(remote.toURI().toString()).add("main").call());
+                    RealSyncResults.requireAccepted(local.push().setRemote("origin").add("main").call());
                     assertTrue(computer.pull().setRemote("origin").setRemoteBranchName("main").call().isSuccessful());
                     assertEquals("Sauvegarde éditeur réel\n",new String(Files.readAllBytes(actual.toPath()),StandardCharsets.UTF_8));
                     // Divergence must not be reported as a successful push.
@@ -61,10 +62,10 @@ public class RealSyncRoundTripTest {
                     commit(computer,"Distant avance");RealSyncResults.requireAccepted(computer.push().setRemote("origin").add("main").call());
                     phone.write("documents/été notes.txt","Local divergent\n",false);commit(local,"Local avance");
                     try {
-                        RealSyncResults.requireAccepted(local.push().setRemote(remote.toURI().toString()).add("main").call());
+                        RealSyncResults.requireAccepted(local.push().setRemote("origin").add("main").call());
                         fail("A non-fast-forward push must be rejected");
                     } catch(IllegalStateException expected) { assertTrue(expected.getMessage().contains("REFUSÉ")); }
-                    assertFalse(local.pull().setRemote(remote.toURI().toString()).setRemoteBranchName("main").call().isSuccessful());
+                    assertFalse(local.pull().setRemote("origin").setRebase(false).setRemoteBranchName("main").call().isSuccessful());
                     assertFalse(local.status().call().getConflicting().isEmpty());
                 }
             }
