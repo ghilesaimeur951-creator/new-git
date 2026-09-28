@@ -248,7 +248,15 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private List<Question> quiz = new ArrayList<>();
     private final List<Integer> answerOrder = new ArrayList<>();
-    private final List<String> examCorrections = new ArrayList<>();
+    private static class ExamCorrection {
+        final Question question;
+        final String response;
+        final boolean correct;
+        ExamCorrection(Question question, String response, boolean correct) {
+            this.question=question; this.response=response; this.correct=correct;
+        }
+    }
+    private final List<ExamCorrection> examCorrections = new ArrayList<>();
     private ProgressBarView questionProgress;
     private int activeLevel = 1;
     private int currentIndex = 0;
@@ -265,6 +273,9 @@ public class MainActivity extends Activity {
     private TextView progressView;
     private TextView questionView;
     private TextView feedbackView;
+    private TextView detailView;
+    private Button moreDetailsButton;
+    private ScrollView quizScroll;
     private EditText writtenAnswer;
     private Button submitWritten;
     private LinearLayout sourceIllustration;
@@ -403,6 +414,7 @@ public class MainActivity extends Activity {
         applySystemBars();
 
         ScrollView scroll = new ScrollView(this);
+        quizScroll=scroll;
         scroll.setBackgroundColor(bgColor());
         LinearLayout root = column(18, 16, 18, 28);
         scroll.addView(root);
@@ -480,6 +492,20 @@ public class MainActivity extends Activity {
         feedbackView = card("");
         feedbackView.setVisibility(View.GONE);
         root.addView(feedbackView, spaced(10));
+        moreDetailsButton = secondaryFullButton("Plus de détails et un exemple  ↓");
+        moreDetailsButton.setVisibility(View.GONE);
+        moreDetailsButton.setOnClickListener(v -> {
+            boolean opening=detailView.getVisibility()!=View.VISIBLE;
+            detailView.setVisibility(opening?View.VISIBLE:View.GONE);
+            sourceIllustration.setVisibility(opening?View.VISIBLE:View.GONE);
+            moreDetailsButton.setText(opening?"Masquer les détails  ↑":"Plus de détails et un exemple  ↓");
+            if(opening)quizScroll.post(() -> quizScroll.smoothScrollTo(0,moreDetailsButton.getTop()));
+        });
+        root.addView(moreDetailsButton);
+        detailView=card("");
+        detailView.setVisibility(View.GONE);
+        root.addView(detailView,spaced(8));
+        sourceIllustration.setVisibility(View.GONE);
         root.addView(sourceIllustration);
 
         nextButton = actionButton("Question suivante");
@@ -509,6 +535,10 @@ public class MainActivity extends Activity {
         illustrationView.setCategory(q.category);
 
         feedbackView.setVisibility(View.GONE);
+        moreDetailsButton.setVisibility(View.GONE);
+        moreDetailsButton.setText("Plus de détails et un exemple  ↓");
+        detailView.setVisibility(View.GONE);
+        sourceIllustration.setVisibility(View.GONE);
         nextButton.setVisibility(View.GONE);
         sourceIllustration.removeAllViews();
         writtenAnswer.setText("");
@@ -554,7 +584,7 @@ public class MainActivity extends Activity {
         }
 
         if (examMode) {
-            examCorrections.add((isCorrect ? "✓ " : "✗ ") + q.text + "\nTa réponse : " + response + "\nRéponse : " + q.options.get(q.correctIndex) + "\n" + q.explanation + "\nExemple :\n" + q.example);
+            examCorrections.add(new ExamCorrection(q,response,isCorrect));
             Set<String> examWrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
             int answeredTotalExam = prefs.getInt("answeredTotal", 0) + 1;
             int correctTotalExam = prefs.getInt("correctTotal", 0);
@@ -605,24 +635,14 @@ public class MainActivity extends Activity {
                 .putInt("bestStreak", bestStreak)
                 .apply();
 
-            feedbackView.setText(
-                "✓ Bonne réponse\n\n" +
-                q.explanation +
-                "\n\nEXEMPLE TERMINAL\n" + q.example +
-                "\n\n+" + earned + " points" +
-                (bonus > 0 ? "  •  bonus série +" + bonus : "")
-            );
+            feedbackView.setText("✓ Bonne réponse\n\n" + QuizTeaching.simple(q,response,true) +
+                "\n\n+" + earned + " points" + (bonus > 0 ? "  •  bonus série +" + bonus : ""));
         } else {
             streak = 0;
             wrong.add(q.text);
             String mistakeKey = "mistake_" + Math.abs(q.text.hashCode());
             prefs.edit().putInt(mistakeKey, prefs.getInt(mistakeKey, 0) + 1).apply();
-            feedbackView.setText(
-                "✗ À revoir\n\n" +
-                "Bonne réponse : " + q.options.get(q.correctIndex) +
-                "\n\n" + q.explanation +
-                "\n\nEXEMPLE TERMINAL\n" + q.example
-            );
+            feedbackView.setText("✗ À revoir\n\n" + QuizTeaching.simple(q,response,false));
         }
 
         prefs.edit()
@@ -644,12 +664,14 @@ public class MainActivity extends Activity {
             }
         }
 
-        feedbackView.setText(feedbackView.getText() + "\n\nÀ retenir : explique à voix haute pourquoi cette réponse convient, puis essaie l’exemple dans le terminal. Une commande écrite dans un quiz n’est jamais exécutée.");
         feedbackView.setVisibility(View.VISIBLE);
+        detailView.setText(QuizTeaching.details(q,response,isCorrect));
+        moreDetailsButton.setVisibility(View.VISIBLE);
         showSourceIllustration(q);
         nextButton.setText(currentIndex == quiz.size() - 1 ? "Voir le résultat" : "Question suivante");
         nextButton.setVisibility(View.VISIBLE);
         pointsView.setText("+" + sessionPoints + " pts cette session   •   Série " + streak);
+        quizScroll.post(() -> quizScroll.smoothScrollTo(0, feedbackView.getTop()));
     }
 
     private void showSourceIllustration(Question question) {
@@ -760,7 +782,20 @@ public class MainActivity extends Activity {
             17
         );
 
-        if (examMode) for (String correction : examCorrections) root.addView(card(correction), spaced(10));
+        if (examMode) for (ExamCorrection attempt : examCorrections) {
+            root.addView(card((attempt.correct?"✓ ":"✗ ")+attempt.question.text+"\n\n"+
+                QuizTeaching.simple(attempt.question,attempt.response,attempt.correct)),spaced(10));
+            TextView full=card(QuizTeaching.details(attempt.question,attempt.response,attempt.correct));
+            full.setVisibility(View.GONE);
+            Button expand=secondaryFullButton("Plus de détails et un exemple  ↓");
+            expand.setOnClickListener(v -> {
+                boolean opening=full.getVisibility()!=View.VISIBLE;
+                full.setVisibility(opening?View.VISIBLE:View.GONE);
+                expand.setText(opening?"Masquer les détails  ↑":"Plus de détails et un exemple  ↓");
+            });
+            root.addView(expand);
+            root.addView(full,spaced(8));
+        }
 
         String message;
         if (reviewMode) {

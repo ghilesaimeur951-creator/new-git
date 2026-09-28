@@ -38,4 +38,29 @@ public class AcademyDesignTest {
         for(AcademyChapters.Chapter chapter:AcademyChapters.ALL){List<MainActivity.Question> questions=AcademyChapters.questions(all,chapter.category);assertFalse(chapter.category,questions.isEmpty());covered+=questions.size();for(MainActivity.Question q:questions)assertEquals(chapter.category,q.category);}
         assertEquals(all.size(),covered);c.pause().stop().destroy();
     }
+    @Test public void renderPermissionsCorrectionCollapsedAndExpandedOnPhone()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();
+        MainActivity activity=c.get();
+        List<MainActivity.Question> all=(List<MainActivity.Question>)field(activity,"questions");
+        MainActivity.Question permission=null;
+        for(MainActivity.Question q:all)if(q.text.startsWith("Dans -rw-r--r--")){permission=q;break;}
+        assertNotNull(permission);
+        Field quiz=MainActivity.class.getDeclaredField("quiz");quiz.setAccessible(true);
+        quiz.set(activity,new ArrayList<>(Collections.singletonList(permission)));
+        call(activity,"showQuizScreen");
+        ((android.widget.EditText)field(activity,"writtenAnswer")).setText("1");
+        call(activity,"answerWritten");
+        View surface=activity.getWindow().getDecorView();
+        surface.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));
+        surface.layout(0,0,360,800);
+        android.widget.ScrollView quizScroll=(android.widget.ScrollView)field(activity,"quizScroll");
+        quizScroll.scrollTo(0,((View)field(activity,"feedbackView")).getTop());
+        capture(activity,"permissions-correction");
+        ((android.widget.Button)field(activity,"moreDetailsButton")).performClick();
+        surface.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));
+        surface.layout(0,0,360,800);
+        quizScroll.scrollTo(0,((View)field(activity,"moreDetailsButton")).getTop());
+        capture(activity,"permissions-details");
+        c.pause().stop().destroy();
+    }
 }
