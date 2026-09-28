@@ -45,6 +45,21 @@ public class TerminalSessionsUiTest {
         assertTrue(((VirtualMachine)field(next.get(),"vm")).execute("cat exemple-session.txt").text.contains("sauvegarde"));
         next.pause().stop().destroy();
     }
+    @Test public void s03LabAccountsAndPermissionsResumeWithSession() throws Exception {
+        ActivityController<SimulatorActivity> controller=Robolectric.buildActivity(SimulatorActivity.class).setup();
+        SimulatorActivity activity=controller.get();
+        java.util.List<?> scenarios=(java.util.List<?>)field(activity,"scenarios");
+        Field index=SimulatorActivity.class.getDeclaredField("scenarioIndex");index.setAccessible(true);index.setInt(activity,scenarios.size()-4);
+        Method mode=SimulatorActivity.class.getDeclaredMethod("setGuidedMode",boolean.class);mode.setAccessible(true);mode.invoke(activity,true);
+        call(activity,"runCommand","umask 077");call(activity,"runCommand","touch secret.txt");
+        controller.pause().stop().destroy();
+        ActivityController<SimulatorActivity> next=Robolectric.buildActivity(SimulatorActivity.class).setup();
+        VirtualMachine vm=(VirtualMachine)field(next.get(),"vm");
+        assertEquals("wilder\n",vm.execute("whoami").text);
+        assertTrue(vm.execute("stat secret.txt").text.contains("0600"));
+        assertEquals("0077\n",vm.execute("umask").text);
+        next.pause().stop().destroy();
+    }
     @Test public void tokenDraftNeverEntersSessionSnapshot() throws Exception {
         ActivityController<SimulatorActivity> controller=Robolectric.buildActivity(SimulatorActivity.class).setup();
         SimulatorActivity activity=controller.get();
