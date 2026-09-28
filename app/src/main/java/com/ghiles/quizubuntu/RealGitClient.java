@@ -671,6 +671,9 @@ public final class RealGitClient {
         TransportCommand<?, ?> command,
         String url
     ) throws Exception {
+        if (!isGithubUrl(url)) {
+            throw new IllegalArgumentException("Le mode GitHub réel accepte uniquement les dépôts de github.com.");
+        }
         if (isSshUrl(url)) {
             if (!sshKeyStore.hasKey()) {
                 throw new IllegalStateException(
@@ -931,7 +934,15 @@ public final class RealGitClient {
         }
 
         // GitHub accepts a non-empty username and the token as the HTTPS password.
-        return new UsernamePasswordCredentialsProvider("git", token);
+        return new UsernamePasswordCredentialsProvider("git", token) {
+            @Override public boolean get(org.eclipse.jgit.transport.URIish uri,
+                org.eclipse.jgit.transport.CredentialItem... items)
+                throws org.eclipse.jgit.errors.UnsupportedCredentialItem {
+                // Re-check the actual destination, including a configured pushurl.
+                if (!"https".equals(uri.getScheme()) || !"github.com".equalsIgnoreCase(uri.getHost())) return false;
+                return super.get(uri, items);
+            }
+        };
     }
 
     private String status(Status status) {
