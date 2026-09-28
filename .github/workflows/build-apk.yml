@@ -41,6 +41,13 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Compare simulator with Bash and Git
+        run: |
+          mkdir -p build/audit-classes
+          javac -d build/audit-classes app/src/main/java/com/ghiles/quizubuntu/{VirtualMachine,CommandCatalog,ShellSyntax,TextCommands,TextFilters}.java tools/{CatalogAuditProbe,DifferentialProbe,TextCorpusProbe}.java
+          python3 tools/audit_catalogue.py
+          python3 tools/differential_scenarios.py
+
       - name: Run Ubuntu Lab command tests
         run: gradle --stacktrace :app:testDebugUnitTest
 
@@ -52,6 +59,8 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            audit/catalogue-results.json
+            audit/scenarios.json
           if-no-files-found: warn
 
       - name: Build debug APK
