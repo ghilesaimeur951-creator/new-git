@@ -1,5 +1,9 @@
 # Ubuntu & Git Academy
 
+## Version 4.5
+
+Voir [les nouveautés, le guide téléphone–ordinateur et les limites](RELEASE-4.5.md).
+
 ## Version 4.4 — audit 250 commandes et SSH réel
 
 Cette version met l'accent sur la fiabilité du terminal libre.

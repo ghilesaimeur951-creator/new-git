@@ -117,7 +117,18 @@ public final class VirtualMachine {
     private String previousBranch = "main";
     private final Map<String,String> branches = new LinkedHashMap<>();
     private final Map<String,Commit> commits = new LinkedHashMap<>();
-    private final Set<String> staged = new LinkedHashSet<>();
+    private final Map<String,String> indexSnapshot = new LinkedHashMap<>();
+    private final Set<String> staged = new LinkedHashSet<String>() {
+        @Override public boolean add(String path) {
+            indexSnapshot.put(path, files.get(repoRoot + "/" + path));
+            return super.add(path);
+        }
+        @Override public boolean remove(Object path) {
+            indexSnapshot.remove(path);
+            return super.remove(path);
+        }
+        @Override public void clear() { indexSnapshot.clear(); super.clear(); }
+    };
     private Map<String,String> headSnapshot = new LinkedHashMap<>();
     private int commitCounter = 1;
 
@@ -271,15 +282,25 @@ public final class VirtualMachine {
         }
     }
 
+    private int executionDepth;
+
     public Result execute(String raw) {
+        if (executionDepth >= 32) return Result.error("Expansion récursive : alias ou commande trop profonde.");
+        executionDepth++;
+        try { return executeInternal(raw); }
+        catch (IllegalArgumentException ex) { return Result.error(ex.getMessage()); }
+        finally { executionDepth--; }
+    }
+
+    private Result executeInternal(String raw) {
         String command = raw == null ? "" : raw.trim();
 
         if (command.isEmpty()) return Result.normal("");
 
-        if (command.contains("&&")) {
+        if (ShellSyntax.split(command, "&&").size() > 1) {
             StringBuilder out = new StringBuilder();
 
-            for (String part : command.split("&&")) {
+            for (String part : ShellSyntax.split(command, "&&")) {
                 Result result = execute(part.trim());
 
                 if (result.kind == Kind.ERROR) return result;
@@ -332,6 +353,15 @@ public final class VirtualMachine {
             return Result.normal(out.toString().trim());
         }
 
+        if ("ctrl+c".equals(n) || "^c".equals(n)) return Result.normal("^C");
+        if (command.startsWith(">")) {
+            List<String> target = ShellSyntax.words(command.substring(1));
+            if (target.size() != 1) return Result.error("bash: redirection invalide");
+            String path = resolve(target.get(0));
+            if (!directories.contains(parent(path))) return Result.error("bash: dossier parent absent");
+            files.put(path, "");
+            return Result.normal("");
+        }
         if ("clear".equals(n)) return Result.clear();
 
         if ("history".equals(n)) {
@@ -347,6 +377,14 @@ public final class VirtualMachine {
 
         if (aliases.containsKey(n)) {
             return execute(aliases.get(n));
+        }
+
+        List<String> words = ShellSyntax.words(command);
+        if (!words.isEmpty() && TextCommands.handles(words.get(0)) && !command.contains("~/.ssh/")) {
+            return TextCommands.run(words, path -> files.get(resolve(path)));
+        }
+        if (n.startsWith("echo $") && !command.contains(">")) {
+            return Result.normal(environment.getOrDefault(command.substring(6).trim(), ""));
         }
 
         if ("pwd".equals(n)) return Result.normal(cwd);
@@ -1072,6 +1110,7 @@ public final class VirtualMachine {
         }
 
         if ("git init".equals(n)) {
+            if (inGitRepo()) return Result.success("Dépôt Git existant réinitialisé sans modifier son historique.");
             gitInitialized = true;
             repoRoot = cwd;
             headBranch = "main";
@@ -1098,17 +1137,22 @@ public final class VirtualMachine {
             String arg = command.substring("git add ".length()).trim();
 
             if (".".equals(arg)) {
-                for (String path : files.keySet()) {
-                    if (path.equals(repoRoot) || path.startsWith(repoRoot + "/")) {
-                        staged.add(relativeToRepo(path));
-                    }
+                Set<String> candidates = new LinkedHashSet<>(headSnapshot.keySet());
+                candidates.addAll(repoFiles());
+                for (String path : candidates) {
+                    String value = files.get(repoRoot + "/" + path);
+                    if (!java.util.Objects.equals(headSnapshot.get(path), value)) staged.add(path);
+                    else staged.remove(path);
                 }
             } else {
                 String path = resolve(arg);
-                if (!path.startsWith(repoRoot)) {
+                if (!path.startsWith(repoRoot + "/")) {
                     return Result.error("fatal: pathspec outside repository");
                 }
 
+                if (!files.containsKey(path) && !headSnapshot.containsKey(relativeToRepo(path))) {
+                    return Result.error("fatal: pathspec does not match any files");
+                }
                 staged.add(relativeToRepo(path));
             }
 
@@ -1147,7 +1191,7 @@ public final class VirtualMachine {
         if ("git branch".equals(n)) return gitBranch(false);
         if ("git branch -a".equals(n)) return gitBranch(true);
 
-        if (n.startsWith("git branch -D ")) {
+        if (command.startsWith("git branch -D ")) {
             String name = command.substring("git branch -D ".length()).trim();
 
             if (name.equals(headBranch)) {
@@ -1296,7 +1340,7 @@ public final class VirtualMachine {
             return Result.success("Switched to a new branch '" + name + "'");
         }
 
-        if (n.startsWith("git checkout -B ")) {
+        if (command.startsWith("git checkout -B ")) {
             String name = command.substring("git checkout -B ".length()).trim();
             branches.put(name, branches.getOrDefault(headBranch, ""));
             headBranch = name;
@@ -1940,16 +1984,15 @@ public final class VirtualMachine {
         Set<String> untracked = new LinkedHashSet<>();
         Set<String> modified = new LinkedHashSet<>();
 
-        for (String relative : current) {
-            String absolute = repoRoot + "/" + relative;
-
-            if (!headSnapshot.containsKey(relative)) {
-                if (!staged.contains(relative)) untracked.add(relative);
-            } else if (!files.getOrDefault(absolute, "")
-                .equals(headSnapshot.get(relative))) {
-
-                if (!staged.contains(relative)) modified.add(relative);
-            }
+        Set<String> paths = new LinkedHashSet<>(current);
+        paths.addAll(headSnapshot.keySet());
+        paths.addAll(staged);
+        for (String relative : paths) {
+            String work = files.get(repoRoot + "/" + relative);
+            String index = staged.contains(relative) ? indexSnapshot.get(relative) : headSnapshot.get(relative);
+            if (!headSnapshot.containsKey(relative) && !staged.contains(relative)) {
+                if (work != null) untracked.add(relative);
+            } else if (!java.util.Objects.equals(work, index)) modified.add(relative);
         }
 
         if (!staged.isEmpty()) {
@@ -1995,9 +2038,27 @@ public final class VirtualMachine {
         boolean decorate = command.contains("--decorate");
         boolean graph = command.contains("--graph");
 
-        List<Commit> list = new ArrayList<>(commits.values());
-        Collections.reverse(list);
-
+        List<String> args = ShellSyntax.words(command);
+        int limit = Integer.MAX_VALUE;
+        for (int i = 2; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (arg.equals("-n")) {
+                if (++i >= args.size()) return Result.error("git log : -n attend un nombre");
+                try { limit = Integer.parseInt(args.get(i)); }
+                catch (NumberFormatException e) { return Result.error("git log : nombre invalide"); }
+            } else if (arg.matches("-[0-9]+")) limit = Integer.parseInt(arg.substring(1));
+        }
+        if (limit < 0) return Result.error("git log : nombre négatif");
+        List<Commit> list = new ArrayList<>();
+        if (args.contains("--all")) {
+            list.addAll(commits.values());
+            Collections.reverse(list);
+        } else {
+            Commit cursor = findCommit("HEAD");
+            while (cursor != null) { list.add(cursor); cursor = commits.get(cursor.parent); }
+        }
+        if (list.size() > limit) list = new ArrayList<>(list.subList(0, limit));
+        if (args.contains("--reverse")) Collections.reverse(list);
         StringBuilder out = new StringBuilder();
 
         for (Commit commit : list) {
@@ -2033,6 +2094,21 @@ public final class VirtualMachine {
             }
 
             out.append('\n');
+            if (args.contains("-p") || args.contains("--stat") || args.contains("--name-only") || args.contains("--name-status")) {
+                Commit parent = commits.get(commit.parent);
+                Map<String,String> before = parent == null ? Collections.emptyMap() : parent.snapshot;
+                Set<String> changed = new LinkedHashSet<>(before.keySet());
+                changed.addAll(commit.snapshot.keySet());
+                for (String path : changed) {
+                    String old = before.get(path), next = commit.snapshot.get(path);
+                    if (java.util.Objects.equals(old, next)) continue;
+                    if (args.contains("-p")) out.append("diff --git a/").append(path).append(" b/").append(path)
+                        .append("\n-").append(old == null ? "" : old).append("\n+").append(next == null ? "" : next).append('\n');
+                    if (args.contains("--stat")) out.append(" ").append(path).append(" | modifié\n");
+                    if (args.contains("--name-status")) out.append(old == null ? "A\t" : next == null ? "D\t" : "M\t").append(path).append('\n');
+                    else if (args.contains("--name-only")) out.append(path).append('\n');
+                }
+            }
         }
 
         return Result.normal(out.toString().trim());
@@ -2044,7 +2120,8 @@ public final class VirtualMachine {
         if (cached) {
             for (String path : staged) {
                 String before = headSnapshot.getOrDefault(path, "");
-                String after = files.getOrDefault(repoRoot + "/" + path, "");
+                String after = indexSnapshot.get(path) == null ? "" : indexSnapshot.get(path);
+                if (before.equals(after)) continue;
 
                 out.append("diff --git a/")
                     .append(path)
@@ -2062,9 +2139,7 @@ public final class VirtualMachine {
             }
         } else {
             for (String path : repoFiles()) {
-                if (staged.contains(path)) continue;
-
-                String before = headSnapshot.get(path);
+                String before = staged.contains(path) ? indexSnapshot.get(path) : headSnapshot.get(path);
                 String after = files.getOrDefault(repoRoot + "/" + path, "");
 
                 if (before != null && !before.equals(after)) {
@@ -2212,49 +2287,22 @@ public final class VirtualMachine {
     }
 
     private Result echo(String command) {
-        if (command.contains(">>") || command.contains(">")) {
-            boolean append = command.contains(">>");
-            String delimiter = append ? ">>" : ">";
-
-            String[] parts = command.split(
-                append ? ">>" : ">",
-                2
-            );
-
-            if (parts.length != 2) {
-                return Result.error("bash: erreur de redirection");
-            }
-
-            String text = stripQuotes(
-                parts[0].substring(4).trim()
-            );
-
-            String path = resolve(parts[1].trim());
-            ensureParentDirectories(path);
-
-            if (append) {
-                String old = files.getOrDefault(path, "");
-                files.put(
-                    path,
-                    old + (old.isEmpty() ? "" : "\n") + text
-                );
-            } else {
-                files.put(path, text);
-            }
-
-            return Result.normal("");
-        }
-
-        String value = stripQuotes(command.substring(5).trim());
-
-        if (value.startsWith("$") && value.length() > 1) {
-            String key = value.substring(1);
-            if (environment.containsKey(key)) {
-                value = environment.get(key);
-            }
-        }
-
-        return Result.normal(value);
+        boolean append = ShellSyntax.split(command, ">>").size() > 1;
+        List<String> parts = ShellSyntax.split(command, append ? ">>" : ">");
+        List<String> words = ShellSyntax.words(parts.get(0));
+        boolean newline = words.size() < 2 || !words.get(1).equals("-n");
+        int start = newline ? 1 : 2;
+        String value = String.join(" ", words.subList(Math.min(start, words.size()), words.size()));
+        if (value.startsWith("$") && environment.containsKey(value.substring(1))) value = environment.get(value.substring(1));
+        if (newline) value += "\n";
+        if (parts.size() == 1) return Result.normal(value);
+        if (parts.size() != 2) return Result.error("bash: redirection invalide");
+        List<String> target = ShellSyntax.words(parts.get(1));
+        if (target.size() != 1) return Result.error("bash: cible de redirection manquante ou ambiguë");
+        String path = resolve(target.get(0));
+        if (!directories.contains(parent(path))) return Result.error("bash: dossier parent absent");
+        files.put(path, (append ? files.getOrDefault(path, "") : "") + value);
+        return Result.normal("");
     }
 
     private Result copyFile(String argsText) {
@@ -2434,10 +2482,8 @@ public final class VirtualMachine {
         Map<String,String> snapshot = new LinkedHashMap<>(headSnapshot);
 
         for (String path : staged) {
-            String absolute = repoRoot + "/" + path;
-
-            if (files.containsKey(absolute)) {
-                snapshot.put(path, files.get(absolute));
+            if (indexSnapshot.get(path) != null) {
+                snapshot.put(path, indexSnapshot.get(path));
             } else {
                 snapshot.remove(path);
             }
