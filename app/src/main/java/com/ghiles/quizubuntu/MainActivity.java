@@ -306,7 +306,7 @@ public class MainActivity extends Activity {
         LinearLayout terminalCard=column(18,18,18,16);terminalCard.setBackground(roundedDrawable(isDark()?Color.rgb(28,42,49):Color.rgb(226,243,239),24,0));
         TextView terminalTitle=text(">_  Le terminal, pour de vrai",19,true);terminalCard.addView(terminalTitle);
         addBody(terminalCard,"Fichiers, GitHub et sessions sauvegardées. Ou entraîne-toi dans les missions guidées.",14);
-        Button terminal=actionButton("Ouvrir le terminal");AcademyDesign.style(terminal,Color.rgb(8,105,109),18,0);terminal.setOnClickListener(v->startActivity(new Intent(this,SimulatorActivity.class)));terminalCard.addView(terminal);root.addView(terminalCard);
+        Button terminal=actionButton("Ouvrir le terminal");AcademyDesign.style(terminal,Color.rgb(8,105,109),18,0);terminal.setTextColor(Color.WHITE);terminal.setOnClickListener(v->startActivity(new Intent(this,SimulatorActivity.class)));terminalCard.addView(terminal);root.addView(terminalCard);
         addSection(root,"Un chapitre. Son quiz.");
         addBody(root,"11 sujets, des bases du terminal aux ACL. Chaque quiz reste dans le chapitre choisi.",14);
         Button chapters=actionButton("Explorer les 11 chapitres  →");chapters.setOnClickListener(v->showCategoryPicker());root.addView(chapters);
@@ -325,8 +325,8 @@ public class MainActivity extends Activity {
         }).setPositiveButton("Appliquer",(d,w)->showHome()).show();
     }
     private void showTrainingTools(){
-        new android.app.AlertDialog.Builder(this).setTitle("Entraînements & outils").setItems(new String[]{"Quiz rapide · 10 questions","Examen · 20 questions","Entraînement adaptatif","Parcours par niveaux","Fiches de cours","Commandes et favoris","Mes badges","Exporter ma progression"},(d,i)->{
-            if(i==0)startQuickQuiz();else if(i==1)startExam();else if(i==2)startAdaptiveQuiz();else if(i==3)showLevelPicker();else if(i==4)showCourseMenu();else if(i==5)showCommandLibrary("");else if(i==6)showBadges();else shareProgress();
+        new android.app.AlertDialog.Builder(this).setTitle("Entraînements & outils").setItems(new String[]{"Quiz rapide · 10 questions","Examen · 20 questions","Entraînement adaptatif","Parcours par niveaux","Fiches de cours","Commandes et favoris","Mes badges","Exporter ma progression","Mémo rapide"},(d,i)->{
+            if(i==0)startQuickQuiz();else if(i==1)startExam();else if(i==2)startAdaptiveQuiz();else if(i==3)showLevelPicker();else if(i==4)showCourseMenu();else if(i==5)showCommandLibrary("");else if(i==6)showBadges();else if(i==7)shareProgress();else showMemo();
         }).show();
     }
     private void showLevelPicker(){
@@ -1262,9 +1262,7 @@ public class MainActivity extends Activity {
             root.addView(row, spaced(6));
         }
 
-        addBottomNav(root, "Stats");
-        protectFromSystemBars(scroll);
-        setContentView(scroll);
+        installAcademyPage(scroll,4);
     }
 
     private void showBadges() {
@@ -1290,9 +1288,7 @@ public class MainActivity extends Activity {
         addBadge(root, "Sans faute", "Obtenir 100% sur un niveau.", prefs.getBoolean("perfectLevel", false));
         addBadge(root, "1000 points", "Accumuler au moins 1000 points.", totalPoints >= 1000);
 
-        addBottomNav(root, "Badges");
-        protectFromSystemBars(scroll);
-        setContentView(scroll);
+        installAcademyPage(scroll,4);
     }
 
     private void addBadge(LinearLayout root, String title, String description, boolean earned) {
@@ -1353,9 +1349,7 @@ public class MainActivity extends Activity {
             "git merge --abort — abandonner un merge",
             "<<<<<<< HEAD / ======= / >>>>>>> — marqueurs de conflit");
 
-        addBottomNav(root, "Mémo");
-        protectFromSystemBars(scroll);
-        setContentView(scroll);
+        installAcademyPage(scroll,4);
     }
 
     private void addMemoGroup(LinearLayout root, String title, String... lines) {
@@ -1610,6 +1604,7 @@ public class MainActivity extends Activity {
     }
 
     private void applySystemBars() {
+        setTheme(isDark() ? R.style.Theme_Academy_Dark : R.style.Theme_Academy);
         getWindow().setStatusBarColor(bgColor());
         getWindow().setNavigationBarColor(bgColor());
         getWindow().getDecorView().setSystemUiVisibility(
@@ -1742,7 +1737,8 @@ public class MainActivity extends Activity {
 
         private void drawLabel(Canvas canvas, String s, float x, float y) {
             paint.setStyle(Paint.Style.FILL);
-            paint.setTextSize(28f);
+            paint.setTextSize(12f * getResources().getDisplayMetrics().scaledDensity);
+            y = Math.max(paint.getTextSize(), y);
             paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(s, x, y, paint);

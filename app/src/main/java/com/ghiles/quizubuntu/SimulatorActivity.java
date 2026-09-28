@@ -535,6 +535,7 @@ public class SimulatorActivity extends Activity {
         scenarios.add(new Scenario("S03 · VirtualBox en CLI", "Atelier libre : crée Ubuntu10, RAM 2048 Mo, vidéo 16 Mo, VMSVGA, contrôleur SATA et disque VMDK de 30000 Mo, lecteur IDE avec ~/Documents/ubuntu.iso et réseau NAT. Le disque modèle est ~/VirtualBox VMs/Template/template.vmdk. Les VM et disques sont pédagogiques : aucun OS invité ne démarre sur Android.", "VBoxManage createvm --name Ubuntu10 --ostype Ubuntu_64 --register ; VBoxManage modifyvm Ubuntu10 --memory 2048 --vram 16 --graphicscontroller VMSVGA", "s03-vbox", new String[0]));
         scenarios.add(new Scenario("S03 · Terminal Windows", "Atelier CMD virtuel distinct de Linux : crée Secured dans C:\\Users\\ubuntu, entre dedans, crée un fichier avec echo Bonjour > note.txt et affiche le contenu avec dir et type note.txt. Les ACL NTFS du challenge sont expliquées dans le quiz. exit revient à Ubuntu.", "mkdir Secured ; cd Secured ; dir. Sous Windows, les chemins utilisent des antislashs et une lettre de lecteur.", "s03-windows", new String[0]));
         prefs = getSharedPreferences("quiz_progress", MODE_PRIVATE);
+        setTheme(prefs.getBoolean("darkMode",false) ? R.style.Theme_Academy_Dark : R.style.Theme_Academy);
         vm = new VirtualMachine();
         audioFeedback = new AcademyFeedback(this);
         tokenStore = new SecureTokenStore(this);
@@ -871,7 +872,7 @@ public class SimulatorActivity extends Activity {
             return false;
         });
         terminalView.setTypeface(Typeface.MONOSPACE);
-        terminalView.setTextSize(11.5f);
+        terminalView.setTextSize(14f);
         terminalView.setTextColor(TERMINAL_TEXT);
 
         terminalView.setLineSpacing(0f, 1.03f);
@@ -943,20 +944,17 @@ public class SimulatorActivity extends Activity {
         utilityRow.setPadding(dp(2), dp(4), dp(2), 0);
 
         TextView hint = terminalText(
-            "Écris directement après le prompt • Entrée = exécuter",
-            9.5f,
+            "Touche le terminal pour écrire une commande",
+            12f,
             false,
             TERMINAL_MUTED
         );
-        utilityRow.addView(
-            hint,
-            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        );
+        commandBar.addView(hint);
 
-        Button execute = compactButton("↵");
+        Button execute = compactButton("Exécuter ↵");
         execute.setContentDescription("Exécuter la commande du terminal");
         execute.setOnClickListener(v -> executeInput());
-        utilityRow.addView(execute);
+        utilityRow.addView(execute, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         Button previous = compactButton("↑");
         previous.setContentDescription("Commande précédente");
         previous.setOnClickListener(v -> historyPrevious());
