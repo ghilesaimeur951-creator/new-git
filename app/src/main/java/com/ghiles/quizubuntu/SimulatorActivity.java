@@ -392,6 +392,138 @@ public class SimulatorActivity extends Activity {
     private int scenarioIndex = 0;
     private int labPoints = 0;
 
+    private TerminalSessions sessions;
+    private String sessionId = "1", sessionName = "Session 1";
+    private boolean restoringSession = true, commandBusy, awaitingToken;
+    private int preparedScenario = -1;
+    private final List<String> missionReplay = new ArrayList<>();
+
+    private String encode(String text) { return java.util.Base64.getEncoder().encodeToString(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+    private String decode(String text) { return new String(java.util.Base64.getDecoder().decode(text), java.nio.charset.StandardCharsets.UTF_8); }
+
+    private void saveSession() {
+        if (restoringSession || sessions == null || terminalView == null) return;
+        java.util.Properties p = new java.util.Properties();
+        p.setProperty("name", sessionName);
+        p.setProperty("transcript", terminal.toString());
+        p.setProperty("draft", awaitingToken ? "" : commandInput.command());
+        p.setProperty("guided", Boolean.toString(guidedMode));
+        p.setProperty("scenario", Integer.toString(scenarioIndex));
+        p.setProperty("prepared", Integer.toString(preparedScenario));
+        p.setProperty("replay", String.join("\n", missionReplay));
+        List<String> history = new ArrayList<>();
+        for (String entry : inputHistory) history.add(encode(entry));
+        p.setProperty("history", String.join("\n", history));
+        try { sessions.save(sessionId, p); }
+        catch (Exception e) { android.widget.Toast.makeText(this, "Sauvegarde de session impossible : " + safeMessage(e), android.widget.Toast.LENGTH_LONG).show(); }
+    }
+
+    private void openSession(String id) throws Exception {
+        if (commandBusy) throw new IllegalStateException("Attends la fin de la commande en cours.");
+        java.util.Properties p = sessions.load(id);
+        saveSession();
+        restoringSession = true;
+        try {
+            awaitingToken = false;
+            commandInput.setCommand(""); commandInput.setSecret(false);
+            sessionId = id; sessionName = p.getProperty("name", "Session " + id);
+            realGit = new RealGitClient(this, tokenStore, sessions.workspace(id), id);
+            vm = new VirtualMachine(); missionReplay.clear();
+            String replay = p.getProperty("replay", "");
+            if (!replay.isEmpty()) for (String event : replay.split("\n")) {
+                String[] fields = event.split(":", -1);
+                if (fields[0].equals("P")) vm.prepareScenario(decode(fields[1]));
+                else if (fields[0].equals("C")) vm.execute(decode(fields[1]));
+                else if (fields[0].equals("E")) vm.saveEditedFile(decode(fields[1]), decode(fields[2]));
+                missionReplay.add(event);
+            }
+            scenarioIndex = Math.floorMod(Integer.parseInt(p.getProperty("scenario", "0")), scenarios.size());
+            preparedScenario = Integer.parseInt(p.getProperty("prepared", "-1"));
+            terminal.clear(); terminal.append(p.getProperty("transcript", ""));
+            inputHistory.clear();
+            String history = p.getProperty("history", "");
+            if (!history.isEmpty()) for (String entry : history.split("\n")) inputHistory.add(decode(entry));
+            historyCursor = inputHistory.size();
+            guidedMode = Boolean.parseBoolean(p.getProperty("guided", "false"));
+            realEnvironment = !guidedMode;
+            if (guidedMode) showScenario();
+            else setEnvironment(true);
+            appendSystem("[" + sessionName + " · " + sessionId + "] Sauvegarde automatique. help : aide · session : sessions · gh auth login : GitHub.");
+            commandInput.setCommand(p.getProperty("draft", ""));
+            prefs.edit().putString("terminalSession", id).apply();
+        } finally { restoringSession = false; }
+        updateCommandPrompt();
+    }
+
+    private void showSessions() {
+        if (commandBusy || awaitingToken) { appendSystem("Termine la commande en cours avant de changer de session."); refreshTerminal(); return; }
+        try {
+            List<String> ids = sessions.list(); List<String> labels = new ArrayList<>();
+            for (String id : ids) labels.add((id.equals(sessionId) ? "✓ " : "") + id + " — " + sessions.load(id).getProperty("name"));
+            labels.add("+ Nouvelle session");
+            new AlertDialog.Builder(this).setTitle("Sessions sauvegardées").setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                try { openSession(which == ids.size() ? sessions.create("") : ids.get(which)); }
+                catch (Exception e) { appendSystem(safeMessage(e)); refreshTerminal(); }
+            }).show();
+        } catch (Exception e) { appendSystem(safeMessage(e)); refreshTerminal(); }
+    }
+
+    private boolean terminalCommand(String command) {
+        try {
+            List<String> args = ShellSyntax.words(command);
+            if (args.isEmpty()) return true;
+            if (args.get(0).equals("session")) {
+                String action = args.size() > 1 ? args.get(1) : "list";
+                if (action.equals("new")) openSession(sessions.create(args.size() > 2 ? String.join(" ", args.subList(2, args.size())) : ""));
+                else if (action.equals("open") && args.size() == 3) openSession(args.get(2));
+                else if (action.equals("delete") && args.size() >= 3) {
+                    String target = args.get(2);
+                    if (target.equals(sessionId)) appendSystem("Ouvre une autre session avant de supprimer celle-ci.");
+                    else if (args.size() != 4 || !args.get(3).equals("--confirm")) appendSystem("Suppression définitive des fichiers de la session " + target + ". Pour confirmer : session delete " + target + " --confirm");
+                    else { sessions.delete(target); appendSystem("Session " + target + " supprimée."); }
+                }
+                else if (action.equals("rename") && args.size() > 2) { sessionName = String.join(" ", args.subList(2, args.size())); appendSystem("Session renommée : " + sessionName); }
+                else if (action.equals("save") || action.equals("close")) { saveSession(); appendSystem("Session sauvegardée. Tu peux fermer l'application et la reprendre ensuite."); }
+                else if (action.equals("list")) { for (String id : sessions.list()) appendSystem((id.equals(sessionId) ? "* " : "  ") + id + " — " + sessions.load(id).getProperty("name")); }
+                else appendSystem("session list | session new [nom] | session open ID | session rename nom | session save | session close | session delete ID --confirm");
+                refreshTerminal(); return true;
+            }
+            if (command.equals("gh auth login")) {
+                awaitingToken = true; commandInput.setSecret(true);
+                appendSystem("Crée un jeton GitHub autorisé sur ton dépôt (Contents : lecture et écriture), puis colle-le ici et valide. Saisie masquée, exclue de l'historique. Tape cancel pour annuler.\nhttps://github.com/settings/personal-access-tokens/new");
+                refreshTerminal(); return true;
+            }
+            if (command.startsWith("gh auth login ")) { appendSystem("Utilise gh auth login, sans jeton dans la commande."); refreshTerminal(); return true; }
+            if (command.equals("gh auth status")) { appendSystem(tokenStore.hasToken() ? "GitHub connecté : @" + prefs.getString("realGitHubLogin", "") : "GitHub non connecté. Tape gh auth login."); refreshTerminal(); return true; }
+            if (command.equals("gh auth logout")) { tokenStore.clearToken(); prefs.edit().remove("realGitHubLogin").apply(); appendSystem("Identifiants GitHub effacés. Les fichiers et sessions restent sauvegardés."); refreshTerminal(); return true; }
+            if (command.equals("help")) {
+                appendSystem("TERMINAL LIBRE : vrais fichiers dans le stockage privé du téléphone, conservés après fermeture. Git échange avec le dépôt distant.\nFichiers : mkdir, cd, pwd, touch, echo, cat, ls -la, nano.\nGitHub : gh auth login | gh auth status | gh auth logout\nSessions : session list | session new [nom] | session open ID | session rename nom | session save | session close\nExemple : mkdir projet, puis cd projet, git init, nano note.txt, git config --global user.name \"Ton nom\", git config --global user.email \"ton@email\", git add ., git commit -m \"Premier fichier\", git remote add origin URL, git push -u origin main.\nPour récupérer une modification GitHub : git pull origin main, puis cat note.txt. Un push envoie les commits ; pense à git add et git commit après chaque modification.\nMissions guidées : exercices isolés du dépôt réel. commandes : référence des commandes et limites.");
+                refreshTerminal(); return true;
+            }
+            if (command.equals("commandes")) { showCommandCatalogDialog(""); return true; }
+            if (command.equals("history")) { for (int i=0; i<inputHistory.size(); i++) appendSystem((i+1) + "  " + inputHistory.get(i)); refreshTerminal(); return true; }
+            if (command.equals("clear")) { terminal.clear(); refreshTerminal(); return true; }
+        } catch (Exception e) { appendSystem("Erreur : " + safeMessage(e)); refreshTerminal(); return true; }
+        return false;
+    }
+
+    private void submitToken(String value) {
+        commandInput.setCommand(""); commandInput.setSecret(false); awaitingToken = false;
+        if (value.equals("cancel")) { appendSystem("Connexion annulée."); refreshTerminal(); return; }
+        commandBusy = true; appendSystem("Vérification GitHub…"); refreshTerminal();
+        executor.submit(() -> {
+            try {
+                String login = new GitHubApiClient(value).getLogin();
+                tokenStore.saveToken(value); prefs.edit().putString("realGitHubLogin", login).apply();
+                runOnUiThread(() -> { commandBusy = false; appendSystem("GitHub connecté : @" + login + ". Configure le dépôt avec git remote add origin URL ou git clone URL."); refreshTerminal(); });
+            } catch (Exception e) {
+                runOnUiThread(() -> { commandBusy = false; appendSystem("Connexion refusée ou réseau indisponible. Vérifie les droits et la validité du jeton puis relance gh auth login."); refreshTerminal(); });
+            }
+        });
+    }
+
+    @Override protected void onPause() { saveSession(); super.onPause(); }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -413,19 +545,23 @@ public class SimulatorActivity extends Activity {
 
         buildUi();
 
-        appendSystem("Ubuntu 24.04 LTS — Ubuntu & Git Academy");
-        appendSystem("Environnement pédagogique sécurisé. Tape help pour l'aide.");
-
-        if (realEnvironment) {
+        try {
+            sessions = new TerminalSessions(getFilesDir());
+            String active = prefs.getString("terminalSession", "1");
+            if (!sessions.list().contains(active)) active = "1";
+            openSession(active);
+        } catch (Exception e) {
+            restoringSession = false;
             setEnvironment(true);
-        } else {
-            setEnvironment(false);
+            appendSystem("Impossible de restaurer la session : " + safeMessage(e));
+            refreshTerminal();
         }
     }
 
     @Override
     protected void onDestroy() {
-        executor.shutdownNow();
+        saveSession();
+        executor.shutdown();
         super.onDestroy();
     }
 
@@ -520,7 +656,7 @@ public class SimulatorActivity extends Activity {
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
-        TextView indicators = terminalText("●  Wi-Fi  100%", 10, false, Color.rgb(226,226,230));
+        TextView indicators = terminalText("Sessions locales", 10, false, Color.rgb(226,226,230));
         indicators.setGravity(Gravity.END);
         bar.addView(
             indicators,
@@ -536,7 +672,7 @@ public class SimulatorActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(3), dp(2), dp(3), dp(5));
 
-        TextView title = terminalText("Ubuntu 24.04 LTS", 11, true, Color.WHITE);
+        TextView title = terminalText("Ubuntu Academy", 11, true, Color.WHITE);
         header.addView(
             title,
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -609,109 +745,9 @@ public class SimulatorActivity extends Activity {
     }
 
     private void addRealControls() {
-        realControls = panel(Color.rgb(55, 24, 36), 13);
-
+        // Kept detached for legacy status helpers; authentication is terminal-only.
+        realControls = new LinearLayout(this);
         realStatusView = terminalText("", 11, false, Color.WHITE);
-        realStatusView.setPadding(0, 0, 0, dp(6));
-        realControls.addView(realStatusView);
-
-        LinearLayout first = new LinearLayout(this);
-        first.setOrientation(LinearLayout.HORIZONTAL);
-
-        Button connect = smallButton("Connexion GitHub");
-        connect.setOnClickListener(v -> showTokenDialog());
-        first.addView(
-            connect,
-            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        );
-
-        Button repos = smallButton("Choisir dépôt");
-        repos.setOnClickListener(v -> chooseRepository());
-        LinearLayout.LayoutParams reposParams = new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1f
-        );
-        reposParams.leftMargin = dp(6);
-        first.addView(repos, reposParams);
-
-        realControls.addView(first);
-
-        LinearLayout second = new LinearLayout(this);
-        second.setOrientation(LinearLayout.HORIZONTAL);
-        second.setPadding(0, dp(6), 0, 0);
-
-        Button clone = smallButton("Cloner / ouvrir");
-        clone.setOnClickListener(v -> cloneSelectedRepository(false));
-        second.addView(
-            clone,
-            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        );
-
-        Button disconnect = smallButton("Déconnexion");
-        disconnect.setOnClickListener(v -> disconnectGitHub());
-        LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1f
-        );
-        dp.leftMargin = this.dp(6);
-        second.addView(disconnect, dp);
-
-        realControls.addView(second);
-
-        Button openGitHub = smallButton("Voir le dépôt sur GitHub");
-        openGitHub.setOnClickListener(v -> {
-            String name = realGit.activeRepositoryName();
-            if (name.isEmpty()) { chooseRepository(); return; }
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/" + name)));
-        });
-        realControls.addView(openGitHub);
-        Button syncGuide = smallButton("Téléphone ↔ ordinateur : mode d’emploi");
-        syncGuide.setOnClickListener(v -> new AlertDialog.Builder(this)
-            .setTitle("Le même dépôt, sur tes deux appareils")
-            .setMessage("1. Connecte ton compte GitHub, sélectionne ton dépôt puis clone-le ici.\n\n" +
-                "2. Sur l’ordinateur, ouvre ce même dépôt sur github.com avec le même compte.\n\n" +
-                "3. Sur le téléphone : nano README.md, puis git add README.md, git commit -m \"Mon changement\" et git push. Actualise la page GitHub sur l’ordinateur.\n\n" +
-                "4. Après une modification sur GitHub, saisis git pull sur le téléphone pour la récupérer.\n\n" +
-                "Les changements restent locaux jusqu’au push. Les exercices du mode Simulation restent virtuels.")
-            .setPositiveButton("Compris", null).show());
-        realControls.addView(syncGuide);
-
-
-        LinearLayout sshRow = new LinearLayout(this);
-        sshRow.setOrientation(LinearLayout.HORIZONTAL);
-        sshRow.setPadding(0, dp(6), 0, 0);
-
-        Button generateSsh = smallButton("Créer clé SSH");
-        generateSsh.setOnClickListener(v -> generateRealSshKey());
-        sshRow.addView(
-            generateSsh,
-            new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        );
-
-        Button uploadSsh = smallButton("Ajouter à GitHub");
-        uploadSsh.setOnClickListener(v -> uploadRealSshKey());
-        LinearLayout.LayoutParams uploadParams = new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1f
-        );
-        uploadParams.leftMargin = dp(5);
-        sshRow.addView(uploadSsh, uploadParams);
-
-        Button transport = smallButton("HTTPS ↔ SSH");
-        transport.setOnClickListener(v -> toggleRealGitTransport());
-        LinearLayout.LayoutParams transportParams = new LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            1f
-        );
-        transportParams.leftMargin = dp(5);
-        sshRow.addView(transport, transportParams);
-
-        realControls.addView(sshRow);
-        root.addView(realControls, topMargin(5));
     }
 
     private void addObjectivePanel() {
@@ -821,7 +857,8 @@ public class SimulatorActivity extends Activity {
         terminalView.setLineSpacing(0f, 1.03f);
         terminalView.setPadding(0, dp(6), 0, dp(5));
         terminalView.setMinLines(12);
-        terminalView.render(terminal, commandPromptView == null ? "$ " : commandPromptView.getText());
+        terminalView.render(terminal, awaitingToken ? "Jeton GitHub (masqué) : " : commandPromptView == null ? "$ " : commandPromptView.getText());
+            saveSession();
 
         window.addView(terminalView);
         root.addView(window);
@@ -860,8 +897,8 @@ public class SimulatorActivity extends Activity {
         cp.leftMargin = dp(5);
         terminalToolsRow.addView(copy, cp);
 
-        Button reset = smallButton("Reset VM");
-        reset.setOnClickListener(v -> confirmReset());
+        Button reset = smallButton("Sessions");
+        reset.setOnClickListener(v -> showSessions());
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
             0,
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -929,35 +966,15 @@ public class SimulatorActivity extends Activity {
     }
 
     private void showLabMenu() {
-        String[] items = {
-            "Terminal libre",
-            "Missions guidées",
-            "Terminal Git/SSH réel",
-            "Aide & commandes",
-            "Catalogue et limites des commandes",
-            "Retour à l'Academy"
-        };
-
-        new AlertDialog.Builder(this)
-            .setTitle("Ubuntu Lab — rubriques")
-            .setItems(items, (dialog, which) -> {
-                if (which == 0) {
-                    setEnvironment(false);
-                    setGuidedMode(false);
-                } else if (which == 1) {
-                    setEnvironment(false);
-                    setGuidedMode(true);
-                } else if (which == 2) {
-                    setEnvironment(true);
-                } else if (which == 3) {
-                    showHelpSections();
-                } else if (which == 4) {
-                    showCommandCatalogDialog("");
-                } else {
-                    finish();
-                }
-            })
-            .show();
+        String[] items = { "Terminal libre", "Missions guidées", "Help", "Commandes", "Retour à l’Académie" };
+        new AlertDialog.Builder(this).setTitle("Ubuntu — rubriques").setItems(items, (dialog, which) -> {
+            if (commandBusy || awaitingToken) return;
+            if (which == 0) setGuidedMode(false);
+            else if (which == 1) setGuidedMode(true);
+            else if (which == 2) runCommand("help");
+            else if (which == 3) showCommandCatalogDialog("");
+            else finish();
+        }).show();
     }
 
     private void showCommandCatalogDialog(String initialQuery) {
@@ -966,7 +983,7 @@ public class SimulatorActivity extends Activity {
         box.setPadding(dp(16), dp(6), dp(16), dp(6));
 
         TextView counter = terminalText(
-            CommandCatalog.count() + " exemples de syntaxe. Certaines options restent non implémentées ; le terminal le signale. Les commandes système agissent sur un modèle virtuel, pas sur Ubuntu réel.",
+            CommandCatalog.count() + " exemples pédagogiques. En terminal libre : fichiers et Git réels ; seules les commandes implémentées sont exécutées. Les missions utilisent un environnement d’exercice isolé.",
             11,
             true,
             Color.rgb(45,45,49)
@@ -999,7 +1016,7 @@ public class SimulatorActivity extends Activity {
         );
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("Catalogue Ubuntu & Git")
+            .setTitle("Commandes")
             .setView(box)
             .setNegativeButton("Fermer", null)
             .setPositiveButton("Rechercher", null)
@@ -1089,8 +1106,8 @@ public class SimulatorActivity extends Activity {
         }
 
         if (realEnvironment) {
-            sectionTitleView.setText("Git/SSH réel");
-            realControls.setVisibility(View.VISIBLE);
+            sectionTitleView.setText("Terminal libre · " + sessionName);
+            realControls.setVisibility(View.GONE);
             objectivePanel.setVisibility(View.GONE);
             interactionRow.setVisibility(View.GONE);
             choicesBox.setVisibility(View.GONE);
@@ -1127,7 +1144,7 @@ public class SimulatorActivity extends Activity {
         if (real) {
             guidedMode = false;
             simulationModes.setVisibility(View.GONE);
-            realControls.setVisibility(View.VISIBLE);
+            realControls.setVisibility(View.GONE);
             choicesBox.removeAllViews();
             nextMissionButton.setVisibility(View.GONE);
             interactionButton.setVisibility(View.GONE);
@@ -1143,13 +1160,13 @@ public class SimulatorActivity extends Activity {
                 "dans l'espace Git privé de l'application. Aucune commande shell arbitraire n'est exécutée sur Android."
             );
 
-            appendSystem("[GIT/SSH RÉEL] Les clés et opérations réseau de cette rubrique sont réelles.");
-            refreshRealStatus();
+            scoreView.setText(sessionName + " · fichiers sauvegardés");
+            refreshRealStatusTextOnly();
         } else {
             realControls.setVisibility(View.GONE);
             simulationModes.setVisibility(View.VISIBLE);
 
-            appendSystem("[SIMULATION] Machine Ubuntu virtuelle locale.");
+
             styleLearningButtons();
 
             if (guidedMode) showScenario();
@@ -1181,15 +1198,16 @@ public class SimulatorActivity extends Activity {
     }
 
     private void setGuidedMode(boolean guided) {
-        if (realEnvironment) return;
-
+        if (commandBusy || awaitingToken) return;
         guidedMode = guided;
+        realEnvironment = !guided;
         prefs.edit().putBoolean("simGuidedMode", guided).apply();
 
         styleLearningButtons();
 
         if (guided) showScenario();
-        else showFreeSimulation();
+        else setEnvironment(true);
+        saveSession();
     }
 
     private void styleLearningButtons() {
@@ -1216,8 +1234,14 @@ public class SimulatorActivity extends Activity {
 
         Scenario scenario = scenarios.get(scenarioIndex);
 
-        if (!scenario.setupKey.isEmpty()) {
-            vm.prepareScenario(scenario.setupKey);
+        if (preparedScenario != scenarioIndex) {
+            missionReplay.clear();
+            vm.reset();
+            if (!scenario.setupKey.isEmpty()) {
+                vm.prepareScenario(scenario.setupKey);
+                missionReplay.add("P:" + encode(scenario.setupKey));
+            }
+            preparedScenario = scenarioIndex;
         }
 
         objectivePanel.setVisibility(View.VISIBLE);
@@ -1312,8 +1336,9 @@ public class SimulatorActivity extends Activity {
     private void executeInput() {
         String command = commandInput.command().trim();
 
-        if (command.isEmpty()) return;
-
+        if (command.isEmpty() || commandBusy) return;
+        if (awaitingToken) { submitToken(command); return; }
+        if (command.startsWith("gh auth login ")) command = "gh auth login";
         commandInput.setCommand("");
         inputHistory.add(command);
         historyCursor = inputHistory.size();
@@ -1327,7 +1352,9 @@ public class SimulatorActivity extends Activity {
     private void runCommand(String command) {
         if (command == null || command.trim().isEmpty()) return;
 
+        if (commandBusy || awaitingToken) return;
         appendPrompt(command);
+        if (terminalCommand(command)) return;
 
         if (realEnvironment) {
             if (command.equals("nano") || command.startsWith("nano ")) {
@@ -1347,8 +1374,9 @@ public class SimulatorActivity extends Activity {
         }
 
         if (command.startsWith("git push") || command.startsWith("git pull") || command.startsWith("git fetch") || command.startsWith("git clone")) {
-            appendPlain("[SIMULATION] Aucun échange avec GitHub. Les fichiers de ce mode sont virtuels. Pour synchroniser le téléphone, passe en GITHUB RÉEL et travaille dans son dossier.\n", Color.rgb(238,176,96));
+            appendPlain("[SIMULATION] Aucun échange avec GitHub. Les fichiers de ce mode sont virtuels. Pour synchroniser le téléphone, ouvre Terminal libre.\n", Color.rgb(238,176,96));
         }
+        missionReplay.add("C:" + encode(command));
         VirtualMachine.Result result = vm.execute(command);
         renderVirtualResult(command, result);
 
@@ -1460,7 +1488,9 @@ public class SimulatorActivity extends Activity {
             "Lab XP : " + labPoints + "  •  Mission réussie"
         );
 
-        objectiveView.postDelayed(this::showScenario, 550);
+        String completedSession = sessionId;
+        int nextScenario = scenarioIndex;
+        objectiveView.postDelayed(() -> { if (sessionId.equals(completedSession) && guidedMode && scenarioIndex == nextScenario) showScenario(); }, 550);
     }
 
     private void runRealCommandAsync(String command) {
@@ -1471,7 +1501,7 @@ public class SimulatorActivity extends Activity {
 
             if (!sshReady && !tokenStore.hasToken()) {
                 appendPlain(
-                    "GitHub réel : connecte ton compte HTTPS ou configure une clé SSH réelle.\n",
+                    "Authentification requise : tape gh auth login, puis relance la commande.\n",
                     ERROR_RED
                 );
                 refreshTerminal();
@@ -1479,6 +1509,7 @@ public class SimulatorActivity extends Activity {
             }
         }
 
+        commandBusy = true;
         appendPlain("[réel] exécution…\n", Color.rgb(238,176,96));
         refreshTerminal();
 
@@ -1487,6 +1518,7 @@ public class SimulatorActivity extends Activity {
                 String output = realGit.execute(command);
 
                 runOnUiThread(() -> {
+                    commandBusy = false;
                     if (!output.isEmpty()) {
                         int color =
                             output.startsWith("fatal") ||
@@ -1505,6 +1537,7 @@ public class SimulatorActivity extends Activity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    commandBusy = false;
                     appendPlain(
                         "Erreur Git réelle : " + safeMessage(e) + "\n",
                         ERROR_RED
@@ -1585,7 +1618,7 @@ public class SimulatorActivity extends Activity {
             .setPositiveButton("Enregistrer", (dialog, which) -> {
                 try {
                     if (realFile) realGit.saveEditorFile(path, editor.getText().toString());
-                    else vm.saveEditedFile(path, editor.getText().toString());
+                    else { vm.saveEditedFile(path, editor.getText().toString()); missionReplay.add("E:" + encode(path) + ":" + encode(editor.getText().toString())); }
                     appendPlain(realFile ? "[réel] Fichier enregistré sur le téléphone. Pour l'envoyer : git add, git commit, git push.\n" : "[nano] fichier enregistré\n", SUCCESS_GREEN);
                 } catch (Exception e) { appendPlain("Échec de l'enregistrement : " + safeMessage(e) + "\n", ERROR_RED); }
                 updateCommandPrompt();
@@ -2118,7 +2151,7 @@ public class SimulatorActivity extends Activity {
     }
 
     private void historyPrevious() {
-        if (inputHistory.isEmpty()) return;
+        if (awaitingToken || inputHistory.isEmpty()) return;
 
         historyCursor = Math.max(0, historyCursor - 1);
         commandInput.setCommand(inputHistory.get(historyCursor));
@@ -2126,7 +2159,7 @@ public class SimulatorActivity extends Activity {
     }
 
     private void historyNext() {
-        if (inputHistory.isEmpty()) return;
+        if (awaitingToken || inputHistory.isEmpty()) return;
 
         historyCursor = Math.min(inputHistory.size(), historyCursor + 1);
 
@@ -2240,7 +2273,8 @@ public class SimulatorActivity extends Activity {
 
     private void refreshTerminal() {
         if (terminalView != null) {
-            terminalView.render(terminal, commandPromptView == null ? "$ " : commandPromptView.getText());
+            terminalView.render(terminal, awaitingToken ? "Jeton GitHub (masqué) : " : commandPromptView == null ? "$ " : commandPromptView.getText());
+            saveSession();
         }
     }
 

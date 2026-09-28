@@ -7,6 +7,29 @@ import android.widget.EditText;
 
 /** One terminal surface: immutable transcript/prompt, editable command at its end. */
 public final class TerminalEditor extends EditText {
+    private boolean secret;
+    public void setSecret(boolean secret) {
+        this.secret = secret;
+        // Keep Paste available for long tokens; Copy/Cut are blocked below.
+        setTransformationMethod(secret ? new android.text.method.PasswordTransformationMethod() {
+            @Override public CharSequence getTransformation(CharSequence source, android.view.View view) {
+                return new CharSequence() {
+                    public int length() { return source.length(); }
+                    public char charAt(int i) { return i >= boundary ? '•' : source.charAt(i); }
+                    public CharSequence subSequence(int start, int end) {
+                        StringBuilder out = new StringBuilder();
+                        for (int i=start; i<end; i++) out.append(charAt(i));
+                        return out.toString();
+                    }
+                    public String toString() { return subSequence(0, length()).toString(); }
+                };
+            }
+        } : null);
+    }
+    @Override public boolean onTextContextMenuItem(int id) {
+        if (secret && (id == android.R.id.copy || id == android.R.id.cut || id == android.R.id.selectAll)) return true;
+        return super.onTextContextMenuItem(id);
+    }
     private int boundary;
     private boolean rendering;
     private Runnable submit;
@@ -24,6 +47,8 @@ public final class TerminalEditor extends EditText {
     }
     public TerminalEditor(Context context) {
         super(context);
+        // Session snapshots handle drafts; Android must never parcel a token draft.
+        setSaveEnabled(false);
         setFilters(new InputFilter[]{(source,start,end,dest,dstart,dend) -> {
             if(rendering)return null;
             if(dstart<boundary)return dest.subSequence(dstart,dend);
