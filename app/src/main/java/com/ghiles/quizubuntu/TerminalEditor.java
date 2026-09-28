@@ -47,6 +47,8 @@ public final class TerminalEditor extends EditText {
     }
     public TerminalEditor(Context context) {
         super(context);
+        // Session snapshots handle drafts; Android must never parcel a token draft.
+        setSaveEnabled(false);
         setFilters(new InputFilter[]{(source,start,end,dest,dstart,dend) -> {
             if(rendering)return null;
             if(dstart<boundary)return dest.subSequence(dstart,dend);

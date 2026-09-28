@@ -31,6 +31,20 @@ public class TerminalSessionsUiTest {
         assertEquals("contenu réel\n",((RealGitClient)field(next.get(),"realGit")).execute("cat note.txt"));
         next.pause().stop().destroy();
     }
+    @Test public void guidedFilesSurviveTabChangesAndRestart() throws Exception {
+        ActivityController<SimulatorActivity> controller=Robolectric.buildActivity(SimulatorActivity.class).setup();
+        SimulatorActivity activity=controller.get();
+        Method mode=SimulatorActivity.class.getDeclaredMethod("setGuidedMode",boolean.class);mode.setAccessible(true);
+        mode.invoke(activity,true);
+        call(activity,"runCommand","echo sauvegarde > exemple-session.txt");
+        mode.invoke(activity,false);mode.invoke(activity,true);
+        assertTrue(((VirtualMachine)field(activity,"vm")).execute("cat exemple-session.txt").text.contains("sauvegarde"));
+        controller.pause().stop().destroy();
+        ActivityController<SimulatorActivity> next=Robolectric.buildActivity(SimulatorActivity.class).setup();
+        assertEquals(true,field(next.get(),"guidedMode"));
+        assertTrue(((VirtualMachine)field(next.get(),"vm")).execute("cat exemple-session.txt").text.contains("sauvegarde"));
+        next.pause().stop().destroy();
+    }
     @Test public void tokenDraftNeverEntersSessionSnapshot() throws Exception {
         ActivityController<SimulatorActivity> controller=Robolectric.buildActivity(SimulatorActivity.class).setup();
         SimulatorActivity activity=controller.get();

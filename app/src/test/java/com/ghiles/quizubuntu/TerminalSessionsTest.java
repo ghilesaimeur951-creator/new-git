@@ -21,6 +21,16 @@ public class TerminalSessionsTest {
         assertFalse(new File(reopened.workspace("1"), "autre.txt").exists());
         assertEquals(new File(root, "github-real"), reopened.workspace("1"));
     }
+    @Test public void deletionOnlyRemovesTheChosenSession() throws Exception {
+        TerminalSessions sessions = new TerminalSessions(temp.newFolder());
+        String id = sessions.create("jetable");
+        new RealWorkspace(sessions.workspace(id)).execute("touch test.txt");
+        new RealWorkspace(sessions.workspace("1")).execute("touch conservé.txt");
+        sessions.delete(id);
+        assertFalse(sessions.workspace(id).exists());
+        assertTrue(new File(sessions.workspace("1"), "conservé.txt").exists());
+        assertEquals(Arrays.asList("1"), sessions.list());
+    }
     @Test public void invalidOrMissingSessionCannotEscapeStorage() throws Exception {
         TerminalSessions sessions = new TerminalSessions(temp.newFolder());
         for(String id : new String[]{"../outside", "0", "-1", "/tmp/a"}) try { sessions.workspace(id); fail(id); } catch(IllegalArgumentException expected) { }

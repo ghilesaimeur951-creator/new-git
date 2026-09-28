@@ -41,5 +41,15 @@ final class TerminalSessions {
         Properties p = new Properties(); p.setProperty("name", name.isEmpty() ? "Session " + id : name);
         save(id, p); return id;
     }
+    synchronized void delete(String id) throws IOException {
+        load(id); // A missing ID never creates or removes an unrelated directory.
+        File root = workspace(id);
+        if (root.exists()) try (java.util.stream.Stream<Path> paths = Files.walk(root.toPath())) {
+            List<Path> ordered = new ArrayList<>(); paths.forEach(ordered::add);
+            ordered.sort(Comparator.reverseOrder());
+            for (Path path : ordered) Files.delete(path);
+        }
+        Files.delete(file(id).toPath());
+    }
     File workspace(String id) { file(id); return id.equals("1") ? new File(files, "github-real") : new File(directory, "workspace-" + id); }
 }

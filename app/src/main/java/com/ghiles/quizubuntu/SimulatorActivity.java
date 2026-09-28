@@ -476,10 +476,16 @@ public class SimulatorActivity extends Activity {
                 String action = args.size() > 1 ? args.get(1) : "list";
                 if (action.equals("new")) openSession(sessions.create(args.size() > 2 ? String.join(" ", args.subList(2, args.size())) : ""));
                 else if (action.equals("open") && args.size() == 3) openSession(args.get(2));
+                else if (action.equals("delete") && args.size() >= 3) {
+                    String target = args.get(2);
+                    if (target.equals(sessionId)) appendSystem("Ouvre une autre session avant de supprimer celle-ci.");
+                    else if (args.size() != 4 || !args.get(3).equals("--confirm")) appendSystem("Suppression définitive des fichiers de la session " + target + ". Pour confirmer : session delete " + target + " --confirm");
+                    else { sessions.delete(target); appendSystem("Session " + target + " supprimée."); }
+                }
                 else if (action.equals("rename") && args.size() > 2) { sessionName = String.join(" ", args.subList(2, args.size())); appendSystem("Session renommée : " + sessionName); }
                 else if (action.equals("save") || action.equals("close")) { saveSession(); appendSystem("Session sauvegardée. Tu peux fermer l'application et la reprendre ensuite."); }
                 else if (action.equals("list")) { for (String id : sessions.list()) appendSystem((id.equals(sessionId) ? "* " : "  ") + id + " — " + sessions.load(id).getProperty("name")); }
-                else appendSystem("session list | session new [nom] | session open ID | session rename nom | session save | session close");
+                else appendSystem("session list | session new [nom] | session open ID | session rename nom | session save | session close | session delete ID --confirm");
                 refreshTerminal(); return true;
             }
             if (command.equals("gh auth login")) {
@@ -495,6 +501,7 @@ public class SimulatorActivity extends Activity {
                 refreshTerminal(); return true;
             }
             if (command.equals("commandes")) { showCommandCatalogDialog(""); return true; }
+            if (command.equals("history")) { for (int i=0; i<inputHistory.size(); i++) appendSystem((i+1) + "  " + inputHistory.get(i)); refreshTerminal(); return true; }
             if (command.equals("clear")) { terminal.clear(); refreshTerminal(); return true; }
         } catch (Exception e) { appendSystem("Erreur : " + safeMessage(e)); refreshTerminal(); return true; }
         return false;
