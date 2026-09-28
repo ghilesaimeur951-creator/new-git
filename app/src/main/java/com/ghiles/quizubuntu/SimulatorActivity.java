@@ -991,7 +991,7 @@ public class SimulatorActivity extends Activity {
             "Missions guidées",
             "Terminal Git/SSH réel",
             "Aide & commandes",
-            "Catalogue 500+ commandes",
+            "Catalogue et limites des commandes",
             "Retour à l'Academy"
         };
 
@@ -1023,7 +1023,7 @@ public class SimulatorActivity extends Activity {
         box.setPadding(dp(16), dp(6), dp(16), dp(6));
 
         TextView counter = terminalText(
-            CommandCatalog.count() + " signatures et exemples disponibles",
+            CommandCatalog.count() + " exemples de syntaxe. Certaines options restent non implémentées ; le terminal le signale. Les commandes système agissent sur un modèle virtuel, pas sur Ubuntu réel.",
             11,
             true,
             Color.rgb(45,45,49)
@@ -1434,7 +1434,7 @@ public class SimulatorActivity extends Activity {
 
                 if (longFormat) {
                     appendPlain(
-                        entry.directory ? "drwxr-xr-x  " : "-rw-r--r--  ",
+                        entry.permissions + "  ",
                         TERMINAL_MUTED
                     );
                 }

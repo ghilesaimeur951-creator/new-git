@@ -115,8 +115,18 @@ public class VirtualMachine250CommandTest {
 
             boolean expectedError =
                 "false".equals(command) ||
+                // The fixture has no suspended jobs; Bash correctly rejects bg/fg.
+                "bg".equals(command) || "fg".equals(command) ||
+                // No archive exists in the fixture: extraction/listing must fail, never report success.
+                command.startsWith("tar -t") || command.startsWith("tar -x") ||
+                command.startsWith("gunzip ") || command.startsWith("unzip ") ||
                 command.startsWith("git remote add origin ") ||
-                "git merge --abort".equals(command);
+                "git merge --abort".equals(command) ||
+                "git stash apply".equals(command) || "git stash pop".equals(command) || "git stash drop".equals(command) ||
+                // README is staged and dirty: replay must refuse to overwrite it.
+                "git cherry-pick HEAD".equals(command) || "git revert HEAD".equals(command) ||
+                // Only one commit exists in this fixture: HEAD~1 is invalid.
+                "git reset --soft HEAD~1".equals(command) || "git reset --mixed HEAD~1".equals(command);
 
             if (expectedError && result.kind != VirtualMachine.Kind.ERROR) {
                 System.err.println(

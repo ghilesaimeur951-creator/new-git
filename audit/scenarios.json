@@ -1,0 +1,602 @@
+[
+  {
+    "setup": "",
+    "command": "cat fichier.txt | grep mot",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "mot\n",
+    "actual": "mot\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "grep mot fichier.txt | wc -l",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "1\n",
+    "actual": "1\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "printf \"a\\nb\\n\" | sort",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "a\nb\n",
+    "actual": "a\nb\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cat fichier.txt | head -n 5",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cat fichier.txt | tail -n 5",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "\n\n2\n10\n2\n",
+    "actual": "\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "printf \"3\\n1\\n2\\n\" | sort -n | head -n 2",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "1\n2\n",
+    "actual": "1\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "printf \"%s\\n\" b a b | sort | uniq -c",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "      1 a\n      2 b\n",
+    "actual": "      1 a\n      2 b\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "grep ABSENT fichier.txt && echo BAD || echo GOOD",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "GOOD\n",
+    "actual": "GOOD\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "false && echo BAD; echo GOOD",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "GOOD\n",
+    "actual": "GOOD\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "true || echo BAD; echo GOOD",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "GOOD\n",
+    "actual": "GOOD\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "false || true && echo GOOD",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "GOOD\n",
+    "actual": "GOOD\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "printf \"a|b\\n\" | grep -F \"a|b\"",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "a|b\n",
+    "actual": "a|b\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "echo \"a && b\"",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "a && b\n",
+    "actual": "a && b\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "echo \"a > b\"",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "a > b\n",
+    "actual": "a > b\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "echo \"$HOME\"",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "/home/ubuntu\n",
+    "actual": "/home/ubuntu\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "echo '$HOME'",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "$HOME\n",
+    "actual": "$HOME\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "printf \"bonjour\\n\"",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "bonjour\n",
+    "actual": "bonjour\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "printf \"%s-%s\\n\" a b c d",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "a-b\nc-d\n",
+    "actual": "a-b\nc-d\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cat -n fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "     1\tGit\n     2\tgit notes\n     3\tGitHub\n     4\talpha:10\n     5\tbeta:2\n     6\tmot\n     7\tMOT\n     8\t\n     9\t\n    10\t2\n    11\t10\n    12\t2\n",
+    "actual": "     1\tGit\n     2\tgit notes\n     3\tGitHub\n     4\talpha:10\n     5\tbeta:2\n     6\tmot\n     7\tMOT\n     8\t\n     9\t\n    10\t2\n    11\t10\n    12\t2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "wc -l fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "12 fichier.txt\n",
+    "actual": "12 fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "wc -c fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "54 fichier.txt\n",
+    "actual": "54 fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "grep -E \"alpha|beta\" fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "alpha:10\nbeta:2\n",
+    "actual": "alpha:10\nbeta:2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "grep -F \"alpha:10\" fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "alpha:10\n",
+    "actual": "alpha:10\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cut -d: -f1 fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha\nbeta\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha\nbeta\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "sed -n '1,5p' fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "awk '{print $1}' fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cat fichier.txt | tr a-z A-Z",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "GIT\nGIT NOTES\nGITHUB\nALPHA:10\nBETA:2\nMOT\nMOT\n\n\n2\n10\n2\n",
+    "actual": "GIT\nGIT NOTES\nGITHUB\nALPHA:10\nBETA:2\nMOT\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cat fichier.txt | tee capture | wc -l",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "12\n",
+    "actual": "12\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "sha256sum fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "d0670db15805bcb4e7712718f0709b2ba53031376ef8e750aab2d36d5f37c0b9  fichier.txt\n",
+    "actual": "d0670db15805bcb4e7712718f0709b2ba53031376ef8e750aab2d36d5f37c0b9  fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "sha512sum fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "ec4685df193f5cbaca1c5cfd758639a09175768dc2dda00b7101ae77f81ef777ce267fad0cef604d2bc9b2e81599f502a4246d70c4017e2a5bcb3ebfc0915218  fichier.txt\n",
+    "actual": "ec4685df193f5cbaca1c5cfd758639a09175768dc2dda00b7101ae77f81ef777ce267fad0cef604d2bc9b2e81599f502a4246d70c4017e2a5bcb3ebfc0915218  fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "sha1sum fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "a41ac8ba110791ae4f3b4473863de35cb3fb6ef3  fichier.txt\n",
+    "actual": "a41ac8ba110791ae4f3b4473863de35cb3fb6ef3  fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "md5sum fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "ccff9c9369cce6565d57dc6306446d11  fichier.txt\n",
+    "actual": "ccff9c9369cce6565d57dc6306446d11  fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cksum fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "3962254065 54 fichier.txt\n",
+    "actual": "3962254065 54 fichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "sort -nd fichier.txt",
+    "passed": true,
+    "expected_exit": 2,
+    "actual_exit": 2,
+    "expected": "",
+    "actual": "",
+    "stderr": "sort: options '-dn' are incompatible\n"
+  },
+  {
+    "setup": "",
+    "command": "cat absent.txt",
+    "passed": true,
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "expected": "",
+    "actual": "",
+    "stderr": "cat: absent.txt: No such file or directory\n"
+  },
+  {
+    "setup": "",
+    "command": "rm -f absent.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "",
+    "actual": "",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "cat absent.txt | wc -l",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "0\n",
+    "actual": "0\n",
+    "stderr": "cat: absent.txt: No such file or directory\n"
+  },
+  {
+    "setup": "",
+    "command": "printf a; printf b",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "ab",
+    "actual": "ab",
+    "stderr": ""
+  },
+  {
+    "setup": "echo one > x; echo two >> x",
+    "command": "cat x",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "one\ntwo\n",
+    "actual": "one\ntwo\n",
+    "stderr": ""
+  },
+  {
+    "setup": "printf \"a\\nb\\n\" > x",
+    "command": "wc -l < x",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "2\n",
+    "actual": "2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "cat fichier.txt | grep mot > result",
+    "command": "cat result",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "mot\n",
+    "actual": "mot\n",
+    "stderr": ""
+  },
+  {
+    "setup": "cp -v source.txt copie.txt",
+    "command": "cat copie.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "cp -a dossier copie",
+    "command": "cat copie/file.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "mv -v ancien.txt nouveau.txt",
+    "command": "cat nouveau.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "mkdir -p spaced; touch \"spaced/a b\"; echo ok > \"spaced/a b\"",
+    "command": "cat \"spaced/a b\"",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "ok\n",
+    "actual": "ok\n",
+    "stderr": ""
+  },
+  {
+    "setup": "rm -f fichier.txt",
+    "command": "cat fichier.txt",
+    "passed": true,
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "expected": "",
+    "actual": "",
+    "stderr": "cat: fichier.txt: No such file or directory\n"
+  },
+  {
+    "setup": "chmod 755 script.sh",
+    "command": "stat script.sh",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "  File: script.sh\n  Size: 54        \tBlocks: 8          IO Block: 4096   regular file\nDevice: 0,27\tInode: 526372      Links: 1\nAccess: (0755/-rwxr-xr-x)  Uid: (    0/    root)   Gid: (    0/    root)\nAccess: 2026-09-28 10:03:11.490013837 +0300\nModify: 2026-09-28 10:03:11.476994214 +0300\nChange: 2026-09-28 10:03:11.498705630 +0300\n Birth: 2026-09-28 10:03:11.476970829 +0300\n",
+    "actual": "  Fichier : script.sh\n  Taille : 54\n  Accès : (0755)\n  Propriétaire : ubuntu\n  Groupe : ubuntu\n",
+    "stderr": ""
+  },
+  {
+    "setup": "ln -s source.txt lien",
+    "command": "cat lien",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "ln -s source.txt lien",
+    "command": "readlink lien",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "source.txt\n",
+    "actual": "source.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "mkdir -p tmp/a/b; rmdir -p tmp/a/b",
+    "command": "ls tmp",
+    "passed": true,
+    "expected_exit": 2,
+    "actual_exit": 1,
+    "expected": "",
+    "actual": "",
+    "stderr": "ls: cannot access 'tmp': No such file or directory\n"
+  },
+  {
+    "setup": "git add README.md; echo extra >> README.md",
+    "command": "git diff --name-only",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "README.md\n",
+    "actual": "README.md\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git switch -c topic; echo topic > README.md; git add README.md; git commit -m topic; git switch main; git merge topic",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "topic\n",
+    "actual": "topic\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git switch --detach HEAD; echo detached > README.md; git add README.md; git commit -m detached; git switch main",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git stash; echo new > untracked; git stash pop",
+    "command": "cat README.md untracked",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\nchange\nnew\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\nchange\nnew\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; echo next > README.md; git add README.md; git commit -m next; git revert --no-edit HEAD",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git switch -c topic; echo topic > README.md; git add README.md; git commit -m topic; git switch main; git cherry-pick topic",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "topic\n",
+    "actual": "topic\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git add README.md; echo next > README.md; git restore README.md",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\nchange\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\nchange\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git add README.md; git commit -m next; git reset --hard HEAD~1",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "actual": "Git\ngit notes\nGitHub\nalpha:10\nbeta:2\nmot\nMOT\n\n\n2\n10\n2\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git add README.md; git commit -m next; git reset --soft HEAD~1",
+    "command": "git diff --cached --name-only",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "README.md\n",
+    "actual": "README.md\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git add README.md; git commit -m next; git reset --mixed HEAD~1",
+    "command": "git diff --name-only",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "README.md\n",
+    "actual": "README.md\n",
+    "stderr": ""
+  }
+]

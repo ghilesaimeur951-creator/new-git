@@ -315,6 +315,7 @@ public final class CommandCatalog {
         for (int mask = 0; mask < (1 << flags.length()); mask++) {
             StringBuilder option = new StringBuilder();
             for (int bit = 0; bit < flags.length(); bit++) if ((mask & (1 << bit)) != 0) option.append(flags.charAt(bit));
+            if (base.equals("sort") && option.indexOf("n") >= 0 && option.indexOf("d") >= 0) continue;
             add(out, seen, "Texte exécutable", base + (option.length() == 0 ? "" : " -" + option) + suffix,
                 "Exécuter " + base + " sur le fichier virtuel. Options combinées : " + (option.length() == 0 ? "aucune" : option) + ". Voir le guide des options.");
         }

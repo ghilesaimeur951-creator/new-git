@@ -20,9 +20,14 @@ final class ShellSyntax {
         StringBuilder word = new StringBuilder();
         char quote = 0;
         boolean escaped = false, started = false;
-        for (char c : input.toCharArray()) {
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
             if (escaped) { word.append(c); escaped = false; started = true; continue; }
-            if (c == '\\' && quote != '\'') { escaped = true; started = true; continue; }
+            if (c == '\\' && quote != '\'') {
+                // In double quotes Bash preserves backslashes before ordinary letters.
+                if (quote == '"' && (i + 1 == input.length() || "\"\\$`\n".indexOf(input.charAt(i + 1)) < 0)) { word.append(c); started = true; continue; }
+                escaped = true; started = true; continue;
+            }
             if (quote != 0) {
                 if (c == quote) quote = 0; else word.append(c);
                 started = true;
@@ -33,6 +38,30 @@ final class ShellSyntax {
         }
         if (quote != 0 || escaped) throw new IllegalArgumentException("Guillemet ou échappement non terminé.");
         if (started) result.add(word.toString());
+        return result;
+    }
+
+    static List<String> operators(String input, String... operators) {
+        List<String> result = new ArrayList<>();
+        char quote = 0;
+        boolean escaped = false;
+        int start = 0;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (escaped) { escaped = false; continue; }
+            if (c == '\\' && quote != '\'') { escaped = true; continue; }
+            if (quote != 0) { if (c == quote) quote = 0; continue; }
+            if (c == '\'' || c == '"') { quote = c; continue; }
+            for (String operator : operators) {
+                if (!input.startsWith(operator, i)) continue;
+                result.add(input.substring(start, i));
+                result.add(operator);
+                i += operator.length() - 1;
+                start = i + 1;
+                break;
+            }
+        }
+        result.add(input.substring(start));
         return result;
     }
 

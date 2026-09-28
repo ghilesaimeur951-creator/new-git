@@ -1,0 +1,14 @@
+{
+  "total": 5904,
+  "passed": 5904,
+  "fixtures": [
+    "course",
+    "empty",
+    "no_final_newline",
+    "numeric",
+    "unicode",
+    "controls"
+  ],
+  "commands": 984,
+  "failures": []
+}
