@@ -9,7 +9,7 @@ public class SimulatorRegressionTest {
         vm.saveEditedFile("/home/ubuntu/README.md", "Git\ngit notes\nGitHub\n10\n2\n\n\n");
         return vm;
     }
-    @Test public void executableCatalogueHasOverThousandVariants() {
+    @Test public void executableCatalogueContainsOnlyValidTextVariants() {
         int count = 0;
         VirtualMachine vm = vm();
         for (CommandCatalog.Entry e : CommandCatalog.all()) {
@@ -20,7 +20,7 @@ public class SimulatorRegressionTest {
             count++;
         }
         System.out.println("Executable text variants: " + count + "; catalogue total: " + CommandCatalog.count());
-        assertTrue(count >= 1000);
+        assertEquals("Invalid GNU sort combinations must not be advertised", 984, count);
     }
     @Test public void grepFlagsAffectActualContents() {
         VirtualMachine vm = vm();
