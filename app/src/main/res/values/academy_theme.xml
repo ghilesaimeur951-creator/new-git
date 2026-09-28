@@ -1,0 +1,19 @@
+<resources>
+    <style name="Theme.Academy" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">#5146C8</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#087E82</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <style name="Theme.Academy.Dark" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#C3BDFF</item>
+        <item name="colorOnPrimary">#21185D</item>
+        <item name="colorSecondary">#79DDD2</item>
+        <item name="colorSurface">#1C2333</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
