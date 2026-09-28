@@ -10,8 +10,8 @@ android {
         applicationId = "com.ghiles.quizubuntu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 17
-        versionName = "4.7"
+        versionCode = 18
+        versionName = "4.8"
     }
 
     compileOptions {
@@ -41,6 +41,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }
 
 

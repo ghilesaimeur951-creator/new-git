@@ -45,6 +45,9 @@ public class MainActivity extends Activity {
         final int correctIndex;
         final String explanation;
         final String example;
+        String format = "Choix raisonné";
+        String[] accepted = null;
+        Question written(String format, String... accepted) { this.format=format; this.accepted=accepted; return this; }
 
         Question(int level, String category, String text, int correctIndex,
                  String explanation, String example, String... options) {
@@ -232,6 +235,7 @@ public class MainActivity extends Activity {
             "Parce que Git crée toujours trois commits","Parce qu'il faut trois branches distantes","Parce que trois utilisateurs doivent valider","Parce que Git examine BASE, OURS et THEIRS")
         ));
         bank.addAll(PdfQuizBank.questions());
+        bank.addAll(PdfPracticeBank.questions());
         return bank;
     }
 
@@ -260,6 +264,9 @@ public class MainActivity extends Activity {
     private TextView progressView;
     private TextView questionView;
     private TextView feedbackView;
+    private EditText writtenAnswer;
+    private Button submitWritten;
+    private LinearLayout sourceIllustration;
     private TextView pointsView;
     private Button nextButton;
     private final List<Button> optionButtons = new ArrayList<>();
@@ -452,7 +459,7 @@ public class MainActivity extends Activity {
         for (Question q : questions) {
             if (q.level == level) quiz.add(q);
         }
-        Collections.shuffle(quiz);
+        mixExercises(quiz);
 
         currentIndex = 0;
         correctCount = 0;
@@ -471,7 +478,7 @@ public class MainActivity extends Activity {
             showHome();
             return;
         }
-        Collections.shuffle(quiz);
+        mixExercises(quiz);
         reviewMode = true;
         customMode = false;
         examMode = false;
@@ -536,7 +543,7 @@ public class MainActivity extends Activity {
         root.addView(questionView);
 
         optionButtons.clear();
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             final int answerIndex = i;
             Button button = answerButton("");
             button.setOnClickListener(v -> answer(answerIndex));
@@ -544,9 +551,24 @@ public class MainActivity extends Activity {
             optionButtons.add(button);
         }
 
+        writtenAnswer = new EditText(this);
+        writtenAnswer.setTextColor(textColor());
+        writtenAnswer.setHint("Tape ta réponse ici");
+        writtenAnswer.setSingleLine(true);
+        writtenAnswer.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        writtenAnswer.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        root.addView(writtenAnswer);
+        submitWritten = actionButton("Vérifier ma réponse");
+        submitWritten.setOnClickListener(v -> answerWritten());
+        writtenAnswer.setOnEditorActionListener((v,a,e) -> { if(a==android.view.inputmethod.EditorInfo.IME_ACTION_DONE){answerWritten();return true;}return false; });
+        root.addView(submitWritten);
+        sourceIllustration = new LinearLayout(this);
+        sourceIllustration.setOrientation(LinearLayout.VERTICAL);
+
         feedbackView = card("");
         feedbackView.setVisibility(View.GONE);
         root.addView(feedbackView, spaced(10));
+        root.addView(sourceIllustration);
 
         nextButton = actionButton("Question suivante");
         nextButton.setVisibility(View.GONE);
@@ -567,7 +589,7 @@ public class MainActivity extends Activity {
         Collections.shuffle(answerOrder);
         questionProgress.setProgress((currentIndex + 1) * 100 / quiz.size());
 
-        categoryView.setText(q.category + "  •  difficulté " + q.level);
+        categoryView.setText(q.category + "  •  difficulté " + q.level + "  •  " + q.format);
         progressView.setText("Question " + (currentIndex + 1) + " / " + quiz.size() +
                 (examMode ? "   •   correction à la fin" : "   •   Bonnes réponses : " + correctCount));
         pointsView.setText("+" + sessionPoints + " pts cette session   •   Série " + streak);
@@ -576,32 +598,50 @@ public class MainActivity extends Activity {
 
         feedbackView.setVisibility(View.GONE);
         nextButton.setVisibility(View.GONE);
+        sourceIllustration.removeAllViews();
+        writtenAnswer.setText("");
+        writtenAnswer.setEnabled(true);
+        writtenAnswer.setVisibility(q.accepted == null ? View.GONE : View.VISIBLE);
+        submitWritten.setVisibility(q.accepted == null ? View.GONE : View.VISIBLE);
+        submitWritten.setEnabled(true);
 
         for (int i = 0; i < optionButtons.size(); i++) {
             Button button = optionButtons.get(i);
+            boolean visible=q.accepted==null && i<answerOrder.size();
+            button.setVisibility(visible?View.VISIBLE:View.GONE);
+            if(!visible)continue;
             button.setText(q.options.get(answerOrder.get(i)));
             button.setEnabled(true);
             styleAnswerNeutral(button);
         }
     }
 
-    private void answer(int index) {
-        if (answered) return;
-        answered = true;
-        int selectedButton = index;
-        index = answerOrder.get(index);
-
-        Question q = quiz.get(currentIndex);
-        boolean isCorrect = index == q.correctIndex;
-
+    private void answer(int button) {
+        if(answered)return;
+        Question q=quiz.get(currentIndex);
+        int index=answerOrder.get(button);
+        gradeAnswer(index==q.correctIndex,q.options.get(index),button);
+    }
+    private void answerWritten() {
+        if(answered)return;
+        String value=writtenAnswer.getText().toString().trim();
+        if(value.isEmpty()){writtenAnswer.setError("Écris une réponse avant de valider.");return;}
+        Question q=quiz.get(currentIndex);
+        gradeAnswer(QuizAnswerMatcher.matches(value,q.accepted),value,-1);
+    }
+    private void gradeAnswer(boolean isCorrect,String response,int selectedButton) {
+        if(answered)return;
+        answered=true;
+        Question q=quiz.get(currentIndex);
+        writtenAnswer.setEnabled(false);submitWritten.setEnabled(false);
         recordDailyAnswer();
         recordCategoryResult(q.category, isCorrect);
-        if (index >= 0 && index < optionButtons.size()) {
+        if (selectedButton >= 0 && selectedButton < optionButtons.size()) {
             optionButtons.get(selectedButton).performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
         }
 
         if (examMode) {
-            examCorrections.add((isCorrect ? "✓ " : "✗ ") + q.text + "\nTa réponse : " + q.options.get(index) + "\nRéponse : " + q.options.get(q.correctIndex) + "\n" + q.explanation);
+            examCorrections.add((isCorrect ? "✓ " : "✗ ") + q.text + "\nTa réponse : " + response + "\nRéponse : " + q.options.get(q.correctIndex) + "\n" + q.explanation + "\nExemple :\n" + q.example);
             Set<String> examWrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
             int answeredTotalExam = prefs.getInt("answeredTotal", 0) + 1;
             int correctTotalExam = prefs.getInt("correctTotal", 0);
@@ -681,6 +721,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < optionButtons.size(); i++) {
             Button button = optionButtons.get(i);
             button.setEnabled(false);
+            if(i>=answerOrder.size())continue;
             if (answerOrder.get(i) == q.correctIndex) {
                 styleAnswerCorrect(button);
             } else if (i == selectedButton && !isCorrect) {
@@ -690,10 +731,63 @@ public class MainActivity extends Activity {
             }
         }
 
+        feedbackView.setText(feedbackView.getText() + "\n\nÀ retenir : explique à voix haute pourquoi cette réponse convient, puis essaie l’exemple dans le terminal. Une commande écrite dans un quiz n’est jamais exécutée.");
         feedbackView.setVisibility(View.VISIBLE);
+        showSourceIllustration(q);
         nextButton.setText(currentIndex == quiz.size() - 1 ? "Voir le résultat" : "Question suivante");
         nextButton.setVisibility(View.VISIBLE);
         pointsView.setText("+" + sessionPoints + " pts cette session   •   Série " + streak);
+    }
+
+    private void showSourceIllustration(Question question) {
+        sourceIllustration.removeAllViews();
+        if(!question.category.equals("Git")&&!question.category.equals("Branches")&&!question.category.equals("Conflits")) {
+            sourceIllustration.addView(card(question.category.equals("SSH") ? "Clé privée : reste sur ton appareil. Clé publique (.pub) : se copie sur GitHub. Empreinte : identifie la clé sans la remplacer. Source : mémo Git/GitHub/SSH fourni." : "Observe l’exemple : quelle était la situation avant la commande ? Qu’est-ce qui a changé après ? Reprends la fiche du cours indiquée dans la correction."));
+            return;
+        }
+        boolean merge=question.category.equals("Conflits")||question.category.equals("Branches");
+        TextView caption=card(merge
+            ? "Lire le schéma : BASE est l’ancêtre commun ; les deux branches ont ensuite leurs propres commits. Une fusion combine ces évolutions. Les noms master/iss53 du dessin jouent le rôle de main/cheese dans tes PDF."
+            : "Lire le schéma : Working Directory = tes fichiers ; Staging Area = l’index préparé par git add ; .git = les versions enregistrées par commit. Un commit reste local jusqu’au push.");
+        sourceIllustration.addView(caption);
+        android.webkit.WebView diagram=new android.webkit.WebView(this);
+        diagram.setBackgroundColor(Color.WHITE);
+        diagram.getSettings().setJavaScriptEnabled(false);
+        diagram.getSettings().setAllowContentAccess(false);
+        diagram.getSettings().setAllowFileAccess(false);
+        diagram.setContentDescription(merge ? "Schéma de fusion à trois sources avec ancêtre commun" : "Schéma des fichiers, de l’index et du dépôt Git");
+        try {
+            String name=merge?"progit_merge.svg":"progit_areas.svg";
+            java.io.InputStream input=getAssets().open(name);
+            java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+            byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1)bytes.write(buffer,0,count);input.close();
+            String svg=new String(bytes.toByteArray(),java.nio.charset.StandardCharsets.UTF_8).replaceFirst("<\\?xml[^>]*>", "");
+            diagram.loadDataWithBaseURL(null,"<html><head><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{margin:8px}svg{width:100%;height:auto}</style></head><body>"+svg+"</body></html>","text/html","UTF-8",null);
+            sourceIllustration.addView(diagram,new LinearLayout.LayoutParams(-1,dp(230)));
+        } catch(java.io.IOException e) { sourceIllustration.addView(card("Le schéma n’a pas pu être chargé. Utilise la légende ci-dessus.")); }
+        TextView credit=text("Illustration : Pro Git, Scott Chacon et Ben Straub — CC BY-NC-SA 3.0. Schéma original conservé ; légende française ajoutée.",12,false);
+        sourceIllustration.addView(credit);
+        Button source=secondaryButton("Lire la source officielle Git");
+        source.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(merge
+            ? "https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging"
+            : "https://git-scm.com/book/en/v2/Getting-Started-What-is-Git%3F"))));
+        sourceIllustration.addView(source);
+    }
+
+    private static void mixExercises(List<Question> list) {
+        List<Question> written=new ArrayList<>(), traps=new ArrayList<>(), choice=new ArrayList<>();
+        for(Question q:list) {
+            if(q.accepted!=null)written.add(q);
+            else if(q.options.contains("Aucune de ces réponses"))traps.add(q);
+            else choice.add(q);
+        }
+        Collections.shuffle(written);Collections.shuffle(traps);Collections.shuffle(choice);
+        list.clear();
+        for(int i=0;i<Math.max(written.size(),Math.max(traps.size(),choice.size()));i++) {
+            if(i<written.size())list.add(written.get(i));
+            if(i<choice.size())list.add(choice.get(i));
+            if(i<traps.size())list.add(traps.get(i));
+        }
     }
 
     private void nextQuestion() {
@@ -783,7 +877,7 @@ public class MainActivity extends Activity {
 
     private void startQuickQuiz() {
         List<Question> pool = new ArrayList<>(questions);
-        Collections.shuffle(pool);
+        mixExercises(pool);
         quiz = new ArrayList<>(pool.subList(0, Math.min(10, pool.size())));
         reviewMode = false;
         customMode = true;
@@ -803,10 +897,10 @@ public class MainActivity extends Activity {
         for (int level = 1; level <= 5; level++) {
             List<Question> candidates = new ArrayList<>();
             for (Question question : questions) if (question.level == level) candidates.add(question);
-            Collections.shuffle(candidates);
+            mixExercises(candidates);
             pool.addAll(candidates.subList(0, Math.min(4, candidates.size())));
         }
-        Collections.shuffle(pool);
+        mixExercises(pool);
         quiz = pool;
         reviewMode = false;
         customMode = true;
@@ -824,18 +918,18 @@ public class MainActivity extends Activity {
         Set<String> wrong = prefs.getStringSet("wrongQuestions", Collections.emptySet());
         List<Question> pool = new ArrayList<>();
         for (Question q : questions) if (wrong.contains(q.text)) pool.add(q);
-        Collections.shuffle(pool);
+        mixExercises(pool);
         pool.sort((a, b) -> Integer.compare(
             prefs.getInt("mistake_" + Math.abs(b.text.hashCode()), 0),
             prefs.getInt("mistake_" + Math.abs(a.text.hashCode()), 0)));
         if (pool.size() > 8) pool = new ArrayList<>(pool.subList(0, 8));
         List<Question> rest = new ArrayList<>(questions);
-        Collections.shuffle(rest);
+        mixExercises(rest);
         for (Question q : rest) {
             if (pool.size() >= 12) break;
             if (!pool.contains(q)) pool.add(q);
         }
-        Collections.shuffle(pool);
+        mixExercises(pool);
         quiz = pool;
         reviewMode = false;
         customMode = true;
@@ -874,7 +968,7 @@ public class MainActivity extends Activity {
     private void startCategoryQuiz(String category) {
         quiz = new ArrayList<>();
         for (Question q : questions) if (category.equals(q.category)) quiz.add(q);
-        Collections.shuffle(quiz);
+        mixExercises(quiz);
         reviewMode = false;
         customMode = true;
         examMode = false;

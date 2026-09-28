@@ -365,7 +365,7 @@ public class SimulatorActivity extends Activity {
     private LinearLayout terminalToolsRow;
     private LinearLayout commandBar;
 
-    private TextView terminalView;
+    private TerminalEditor terminalView;
     private TextView objectiveView;
     private TextView scoreView;
     private TextView interactionLabel;
@@ -373,7 +373,7 @@ public class SimulatorActivity extends Activity {
     private TextView commandPromptView;
     private TextView sectionTitleView;
 
-    private EditText commandInput;
+    private TerminalEditor commandInput;
 
     private Button simulationButton;
     private Button realButton;
@@ -792,15 +792,36 @@ public class SimulatorActivity extends Activity {
 
         window.addView(titleBar);
 
-        terminalView = new TextView(this);
+        terminalView = new TerminalEditor(this);
+        commandInput = terminalView;
+        terminalView.setOnSubmit(this::executeInput);
+        terminalView.setBackgroundColor(Color.TRANSPARENT);
+        terminalView.setGravity(Gravity.TOP | Gravity.START);
+        terminalView.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        terminalView.setImeOptions(EditorInfo.IME_ACTION_GO | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        terminalView.setContentDescription("Terminal. Touchez puis saisissez après le dernier prompt. Entrée exécute la commande.");
+        terminalView.setOnFocusChangeListener((v,focused) -> { if(focused)scroll.postDelayed(this::scrollBottom,120); });
+        terminalView.setOnClickListener(v -> {
+            terminalView.requestFocus();
+            ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(terminalView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
+        terminalView.setOnKeyListener((v,key,event) -> {
+            if(key!=KeyEvent.KEYCODE_ENTER)return false;
+            if(event.getAction()==KeyEvent.ACTION_DOWN && event.getRepeatCount()==0)executeInput();
+            return true;
+        });
+        terminalView.setOnEditorActionListener((v,action,event) -> {
+            if(event==null&&(action==EditorInfo.IME_ACTION_GO||action==EditorInfo.IME_ACTION_DONE||action==EditorInfo.IME_ACTION_SEND)) {executeInput();return true;}
+            return false;
+        });
         terminalView.setTypeface(Typeface.MONOSPACE);
         terminalView.setTextSize(11.5f);
         terminalView.setTextColor(TERMINAL_TEXT);
-        terminalView.setTextIsSelectable(true);
+
         terminalView.setLineSpacing(0f, 1.03f);
         terminalView.setPadding(0, dp(6), 0, dp(5));
         terminalView.setMinLines(12);
-        terminalView.setText(terminal);
+        terminalView.render(terminal, commandPromptView == null ? "$ " : commandPromptView.getText());
 
         window.addView(terminalView);
         root.addView(window);
@@ -858,89 +879,7 @@ public class SimulatorActivity extends Activity {
         commandBar.setPadding(dp(8), dp(5), dp(8), dp(7));
         commandBar.setBackgroundColor(TERMINAL_BG);
 
-        LinearLayout inputRow = new LinearLayout(this);
-        inputRow.setOrientation(LinearLayout.HORIZONTAL);
-        inputRow.setGravity(Gravity.CENTER_VERTICAL);
-        inputRow.setPadding(dp(7), dp(5), dp(5), dp(5));
-        inputRow.setBackground(
-            rounded(
-                Color.rgb(24,24,27),
-                9,
-                Color.rgb(67,67,74)
-            )
-        );
-
-        commandPromptView = new TextView(this);
-        commandPromptView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        commandPromptView.setTextSize(12.5f);
-        commandPromptView.setSingleLine(true);
-        commandPromptView.setPadding(0, 0, dp(4), 0);
-        commandPromptView.setFocusable(false);
-        inputRow.addView(commandPromptView);
-
-        commandInput = new EditText(this);
-        commandInput.setSingleLine(true);
-        commandInput.setFocusable(true);
-        commandInput.setFocusableInTouchMode(true);
-        commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.rgb(115,115,122));
-        commandInput.setHint("tape ta commande ici…");
-        commandInput.setTypeface(Typeface.MONOSPACE);
-        commandInput.setTextSize(15f);
-        commandInput.setMinHeight(dp(44));
-        commandInput.setInputType(
-            InputType.TYPE_CLASS_TEXT |
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        );
-        commandInput.setBackgroundColor(Color.TRANSPARENT);
-        commandInput.setPadding(dp(3), 0, dp(4), 0);
-        commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
-
-        commandInput.setOnFocusChangeListener((v, focused) -> {
-            if (focused) {
-                scroll.postDelayed(this::scrollBottom, 120);
-            }
-        });
-
-        commandInput.setOnClickListener(v -> {
-            commandInput.requestFocus();
-            scroll.postDelayed(this::scrollBottom, 80);
-        });
-
-        commandInput.setOnEditorActionListener((v, actionId, event) -> {
-            boolean enter =
-                actionId == EditorInfo.IME_ACTION_GO ||
-                (event != null &&
-                 event.getAction() == KeyEvent.ACTION_DOWN &&
-                 event.getKeyCode() == KeyEvent.KEYCODE_ENTER);
-
-            if (enter) {
-                executeInput();
-                return true;
-            }
-
-            return false;
-        });
-
-        inputRow.addView(
-            commandInput,
-            new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        );
-
-        Button execute = compactButton("↵");
-        execute.setTextSize(18f);
-        execute.setContentDescription("Exécuter la commande");
-        execute.setTextColor(Color.WHITE);
-        execute.setBackground(rounded(UBUNTU_ORANGE, 8, 0));
-        execute.setOnClickListener(v -> executeInput());
-        inputRow.addView(execute);
-
-        commandBar.addView(inputRow);
-
+        commandPromptView = new TextView(this); // Holds styled prompt; drawn in the terminal surface.
         LinearLayout utilityRow = new LinearLayout(this);
         utilityRow.setOrientation(LinearLayout.HORIZONTAL);
         utilityRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -957,6 +896,10 @@ public class SimulatorActivity extends Activity {
             new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         );
 
+        Button execute = compactButton("↵");
+        execute.setContentDescription("Exécuter la commande du terminal");
+        execute.setOnClickListener(v -> executeInput());
+        utilityRow.addView(execute);
         Button previous = compactButton("↑");
         previous.setContentDescription("Commande précédente");
         previous.setOnClickListener(v -> historyPrevious());
@@ -1367,11 +1310,11 @@ public class SimulatorActivity extends Activity {
     }
 
     private void executeInput() {
-        String command = commandInput.getText().toString().trim();
+        String command = commandInput.command().trim();
 
         if (command.isEmpty()) return;
 
-        commandInput.setText("");
+        commandInput.setCommand("");
         inputHistory.add(command);
         historyCursor = inputHistory.size();
 
@@ -2178,7 +2121,7 @@ public class SimulatorActivity extends Activity {
         if (inputHistory.isEmpty()) return;
 
         historyCursor = Math.max(0, historyCursor - 1);
-        commandInput.setText(inputHistory.get(historyCursor));
+        commandInput.setCommand(inputHistory.get(historyCursor));
         commandInput.setSelection(commandInput.getText().length());
     }
 
@@ -2188,9 +2131,9 @@ public class SimulatorActivity extends Activity {
         historyCursor = Math.min(inputHistory.size(), historyCursor + 1);
 
         if (historyCursor >= inputHistory.size()) {
-            commandInput.setText("");
+            commandInput.setCommand("");
         } else {
-            commandInput.setText(inputHistory.get(historyCursor));
+            commandInput.setCommand(inputHistory.get(historyCursor));
             commandInput.setSelection(commandInput.getText().length());
         }
     }
@@ -2209,9 +2152,10 @@ public class SimulatorActivity extends Activity {
         appendSpan(line, userHost, realEnvironment ? REAL_RED : PROMPT_GREEN, true);
         appendSpan(line, ":", TERMINAL_TEXT, false);
         appendSpan(line, path, PATH_BLUE, true);
-        appendSpan(line, "$", TERMINAL_TEXT, false);
+        appendSpan(line, "$ ", TERMINAL_TEXT, false);
 
         commandPromptView.setText(line);
+        refreshTerminal();
     }
 
     private void appendPrompt(String command) {
@@ -2296,7 +2240,7 @@ public class SimulatorActivity extends Activity {
 
     private void refreshTerminal() {
         if (terminalView != null) {
-            terminalView.setText(terminal);
+            terminalView.render(terminal, commandPromptView == null ? "$ " : commandPromptView.getText());
         }
     }
 
