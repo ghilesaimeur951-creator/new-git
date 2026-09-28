@@ -46,9 +46,11 @@ public class QuizTeachingTest {
             String simple=QuizTeaching.simple(q,"essai",false);
             String details=QuizTeaching.details(q,"essai",false);
             assertTrue(q.text,simple.contains(QuizTeaching.answer(q)));
-            assertTrue(q.text,details.contains(q.text));
+            assertTrue(q.text,details.contains(QuizPrimer.forQuestion(q).question));
             assertTrue(q.text,details.contains(q.example));
             assertTrue(q.text,details.contains("Pourquoi revoir ta réponse"));
+            if (q.accepted==null && q.options.size()>1)
+                for(String option:q.options)assertTrue(q.text+" / "+option,details.contains("• "+option+" : "));
         }
         MainActivity.Question permission=find(bank,"Dans -rw-r--r--");
         assertTrue(QuizTeaching.simple(permission,"1",false).contains("groupe a r--"));
@@ -56,6 +58,40 @@ public class QuizTeachingTest {
         assertTrue(QuizTeaching.details(permission,"1",false).contains("Cette ligne vient de ls -l"));
         assertFalse(QuizTeaching.details(permission,"1",false).contains("Dans le cours : Droits des utilisateurs"));
         assertTrue(QuizTeaching.simple(find(bank,"Donne rwx au propriétaire, r au groupe"),"",true).contains("740"));
+        controller.pause().stop().destroy();
+    }
+    @SuppressWarnings("unchecked")
+    @Test public void beginnerPrimerLabelsRealCommandFileOutputAndMasksResult()throws Exception {
+        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();
+        List<MainActivity.Question> bank=(List<MainActivity.Question>)field(controller.get(),"questions");
+        for(MainActivity.Question q:bank) {
+            QuizPrimer p=QuizPrimer.forQuestion(q);
+            assertFalse(q.text,p.context.trim().isEmpty());
+            assertFalse(q.text,p.question.trim().isEmpty());
+            if (q.format.equals("Prédire le résultat")||q.format.equals("Lire une sortie")) {
+                assertFalse(q.text,p.command.trim().isEmpty());
+                assertFalse(q.text,p.output.trim().isEmpty());
+                assertFalse(q.text,p.focus.trim().isEmpty());
+            }
+        }
+        MainActivity.Question passwd=find(bank,"Dans /etc/passwd, x");
+        QuizPrimer p=QuizPrimer.forQuestion(passwd);
+        assertEquals("cat /etc/passwd",p.command);
+        assertTrue(p.output.contains("alice:x:1000:1000"));
+        assertTrue(p.focus.contains("deuxième"));
+        assertTrue(p.context.contains("FICHIER"));
+        assertTrue(QuizTeaching.details(passwd,"Oui",false).contains("Le x n’est pas un mot de passe lisible"));
+        MainActivity.Question mask=find(bank,"Avec umask 077");
+        QuizPrimer masked=QuizPrimer.forQuestion(mask);
+        assertTrue(masked.command.contains("ls -l secret.txt"));
+        assertFalse(masked.output.contains("600"));
+        assertTrue(masked.output.contains("?"));
+        MainActivity.Question permissions=find(bank,"Dans -rw-r--r--");
+        assertTrue(QuizPrimer.forQuestion(permissions).command.contains("ls -l notes.txt"));
+        assertTrue(QuizPrimer.forQuestion(permissions).focus.contains("r--"));
+        assertFalse(QuizPrimer.forQuestion(permissions).context.contains("0 droit d’écriture"));
+        MainActivity.Question written=find(bank,"Affiche les comptes Linux avec cat");
+        assertFalse(QuizPrimer.forQuestion(written).context.contains("cat /etc/passwd"));
         controller.pause().stop().destroy();
     }
     @SuppressWarnings("unchecked")

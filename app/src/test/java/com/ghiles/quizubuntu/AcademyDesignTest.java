@@ -63,4 +63,20 @@ public class AcademyDesignTest {
         capture(activity,"permissions-details");
         c.pause().stop().destroy();
     }
+    @Test public void renderBeginnerQuestionBeforeAnswerOnPhone()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();
+        MainActivity activity=c.get();
+        List<MainActivity.Question> all=(List<MainActivity.Question>)field(activity,"questions");
+        Field quiz=MainActivity.class.getDeclaredField("quiz");quiz.setAccessible(true);
+        for(String prefix:new String[]{"Dans /etc/passwd, x","Avec umask 077"}) {
+            MainActivity.Question selected=null;
+            for(MainActivity.Question q:all)if(q.text.startsWith(prefix)){selected=q;break;}
+            assertNotNull(prefix,selected);
+            quiz.set(activity,new ArrayList<>(Collections.singletonList(selected)));
+            call(activity,"showQuizScreen");
+            assertEquals(View.GONE,((View)field(activity,"feedbackView")).getVisibility());
+            capture(activity,prefix.startsWith("Dans")?"beginner-passwd":"beginner-umask");
+        }
+        c.pause().stop().destroy();
+    }
 }
