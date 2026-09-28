@@ -56,16 +56,22 @@ public final class RealGitClient {
     private final SecureTokenStore tokenStore;
     private final RealSshKeyStore sshKeyStore;
     private final SharedPreferences prefs;
+    private final SharedPreferences identityPrefs;
     private SshdSessionFactory sshSessionFactory;
     private final RealWorkspace workspace;
 
     public RealGitClient(Context context, SecureTokenStore tokenStore) {
+        this(context, tokenStore, new File(context.getFilesDir(), "github-real"), "1");
+    }
+
+    public RealGitClient(Context context, SecureTokenStore tokenStore, File root, String sessionId) {
         this.context = context.getApplicationContext();
         this.tokenStore = tokenStore;
         this.sshKeyStore = new RealSshKeyStore(this.context);
-        this.prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this.prefs = this.context.getSharedPreferences(sessionId.equals("1") ? PREFS : PREFS + "_session_" + sessionId, Context.MODE_PRIVATE);
+        this.identityPrefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         try {
-            this.workspace = new RealWorkspace(new File(this.context.getFilesDir(), "github-real"));
+            this.workspace = new RealWorkspace(root);
             try { workspace.changeDirectory(prefs.getString("cwd", "~")); } catch (java.io.IOException ignored) { }
         } catch (java.io.IOException e) { throw new IllegalStateException("Espace Git réel inaccessible", e); }
     }
@@ -247,7 +253,7 @@ public final class RealGitClient {
         }
 
         if ("git --version".equals(command)) {
-            return "JGit 6.10.1 (moteur Git Java embarqué)";
+            return "JGit 7.7.1 (moteur Git Java embarqué)";
         }
 
         for (String key : new String[]{"user.name", "user.email"}) {
@@ -255,7 +261,7 @@ public final class RealGitClient {
             if (command.startsWith(prefix)) {
                 List<String> args = ShellSyntax.words(command);
                 if (args.size() != 5) throw new IllegalArgumentException("Une valeur entre guillemets est attendue.");
-                prefs.edit().putString(key, args.get(4)).apply();
+                identityPrefs.edit().putString(key, args.get(4)).apply();
                 if (hasLocalRepository()) try (Git git = Git.open(workTree())) {
                     git.getRepository().getConfig().setString("user", null, key.substring(5), args.get(4));
                     git.getRepository().getConfig().save();
@@ -279,7 +285,7 @@ public final class RealGitClient {
         try (Git git = Git.open(workTree())) {
             Repository repository = git.getRepository();
             for (String key : new String[]{"name", "email"}) {
-                String value = prefs.getString("user." + key, "");
+                String value = identityPrefs.getString("user." + key, "");
                 if (!value.isEmpty()) repository.getConfig().setString("user", null, key, value);
             }
 
