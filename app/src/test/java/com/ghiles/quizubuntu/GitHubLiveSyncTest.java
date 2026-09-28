@@ -55,7 +55,7 @@ public class GitHubLiveSyncTest {
             File computerDir = new File(temp.getRoot(), "computer");
             try (Git computer = Git.cloneRepository().setURI(remote).setBranch(branch)
                 .setDirectory(computerDir).setCredentialsProvider(auth).call()) {
-                assertEquals("Depuis Android\n", Files.readString(new File(computerDir,"phone.txt").toPath()));
+                assertEquals("Depuis Android\n", new String(Files.readAllBytes(new File(computerDir,"phone.txt").toPath()), StandardCharsets.UTF_8));
                 File computerFile = new File(computerDir,"computer.txt");
                 Files.write(computerFile.toPath(), "Depuis GitHub\n".getBytes(StandardCharsets.UTF_8));
                 computer.getRepository().getConfig().setString("user",null,"name","Computer Test");
@@ -77,7 +77,7 @@ public class GitHubLiveSyncTest {
                 assertTrue(computer.pull().setRemote("origin").setRemoteBranchName(branch)
                     .setCredentialsProvider(auth).call().isSuccessful());
                 assertEquals("Depuis Android\nRetour depuis Android\n",
-                    Files.readString(new File(computerDir,"phone.txt").toPath()));
+                    new String(Files.readAllBytes(new File(computerDir,"phone.txt").toPath()), StandardCharsets.UTF_8));
             }
         } finally {
             if (published) try (Git local = Git.open(phone.workTree())) {
