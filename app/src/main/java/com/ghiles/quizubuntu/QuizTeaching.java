@@ -23,7 +23,7 @@ final class QuizTeaching {
         String reason = cleanReason(q.explanation);
         if (!reason.isEmpty() && !specific.contains(reason)) out.append("Dans le cours : ").append(reason).append("\n");
         out.append("\n3. Un exemple à lire pas à pas\n").append(q.example).append("\n");
-        out.append(exampleGuide(q.category)).append("\n");
+        out.append(exampleGuide(q)).append("\n");
         if (!correct) {
             out.append("\n4. Pourquoi revoir ta réponse\n");
             out.append("Ta réponse « ").append(response).append(" » ne répond pas à toute la demande. ");
@@ -108,6 +108,10 @@ final class QuizTeaching {
         // PDF labels are useful as sources, but not as the first words a learner sees.
         int dash = s.indexOf(" — ");
         if (dash >= 0) s = s.substring(dash + 3).trim();
+        if (raw != null && raw.trim().startsWith("S03 — ")) {
+            int second = s.indexOf(" — ");
+            if (second >= 0) s = s.substring(second + 3).trim();
+        }
         if (s.startsWith("Fiche ") || s.startsWith("Guide ") || s.startsWith("Mémo ")) {
             int colon = s.indexOf(" : ");
             if (colon >= 0) s = s.substring(colon + 3).trim();
@@ -132,9 +136,12 @@ final class QuizTeaching {
         }
     }
 
-    private static String exampleGuide(String category) {
-        switch (category) {
-            case "Permissions": return "Dans la commande, repère d’abord le fichier ou dossier à droite, puis les droits au milieu et la commande chmod ou chown à gauche. Si tu vois trois chiffres, lis-les dans l’ordre propriétaire / groupe / autres.";
+    private static String exampleGuide(MainActivity.Question q) {
+        switch (q.category) {
+            case "Permissions":
+                if(q.example.trim().startsWith("-"))return "Cette ligne vient de ls -l : le premier signe - indique un fichier ; les neuf lettres suivantes forment trois groupes de trois. Lis propriétaire, groupe, autres, puis cherche r, w ou x dans le groupe demandé.";
+                if(q.example.trim().startsWith("chmod u=r"))return "La lettre u vise le propriétaire, g le groupe et o les autres. Le signe = fixe exactement les droits de chacun ; un droit absent n’est pas donné.";
+                return "Dans la commande, repère le fichier ou dossier à droite, puis les droits et l’action à gauche. Trois chiffres se lisent dans l’ordre propriétaire / groupe / autres.";
             case "ACL et droits spéciaux": return "Repère la commande, la personne ou le groupe concerné, puis les droits accordés. Pour umask, pars des droits possibles et enlève les bits du masque.";
             case "Git": case "Branches": case "Synchronisation": case "Conflits": return "Lis les lignes de haut en bas : la commande vient après le signe $, et les lignes suivantes montrent son résultat. Un fichier modifié reste local tant qu’il n’a pas été ajouté, commité et poussé.";
             default: return "Lis la première ligne comme l’action, puis demande-toi ce qui apparaît ou change ensuite. Reprends l’exemple avec un autre nom pour vérifier que tu sais refaire le geste.";

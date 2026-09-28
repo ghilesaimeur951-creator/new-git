@@ -53,6 +53,8 @@ public class QuizTeachingTest {
         MainActivity.Question permission=find(bank,"Dans -rw-r--r--");
         assertTrue(QuizTeaching.simple(permission,"1",false).contains("groupe a r--"));
         assertTrue(QuizTeaching.details(permission,"1",false).contains("0 droit d’écriture"));
+        assertTrue(QuizTeaching.details(permission,"1",false).contains("Cette ligne vient de ls -l"));
+        assertFalse(QuizTeaching.details(permission,"1",false).contains("Dans le cours : Droits des utilisateurs"));
         assertTrue(QuizTeaching.simple(find(bank,"Donne rwx au propriétaire, r au groupe"),"",true).contains("740"));
         controller.pause().stop().destroy();
     }
