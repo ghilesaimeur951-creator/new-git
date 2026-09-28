@@ -10,8 +10,8 @@ android {
         applicationId = "com.ghiles.quizubuntu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21
-        versionName = "5.1"
+        versionCode = 22
+        versionName = "5.2"
     }
 
     testOptions { unitTests.isIncludeAndroidResources = true }

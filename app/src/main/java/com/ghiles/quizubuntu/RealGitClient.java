@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Real Git operations inside the application's private storage.
@@ -54,6 +55,7 @@ public final class RealGitClient {
 
     private final Context context;
     private final SecureTokenStore tokenStore;
+    private final Supplier<String> tokenSource;
     private final RealSshKeyStore sshKeyStore;
     private final SharedPreferences prefs;
     private final SharedPreferences identityPrefs;
@@ -65,8 +67,16 @@ public final class RealGitClient {
     }
 
     public RealGitClient(Context context, SecureTokenStore tokenStore, File root, String sessionId) {
+        this(context, tokenStore, root, sessionId, tokenStore::loadToken);
+    }
+
+    // Allows the same command engine to be tested against GitHub with a
+    // short-lived CI credential. Production always reads Android Keystore.
+    RealGitClient(Context context, SecureTokenStore tokenStore, File root, String sessionId,
+                  Supplier<String> tokenSource) {
         this.context = context.getApplicationContext();
         this.tokenStore = tokenStore;
+        this.tokenSource = tokenSource;
         this.sshKeyStore = new RealSshKeyStore(this.context);
         this.prefs = this.context.getSharedPreferences(sessionId.equals("1") ? PREFS : PREFS + "_session_" + sessionId, Context.MODE_PRIVATE);
         this.identityPrefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -260,7 +270,7 @@ public final class RealGitClient {
             String prefix = "git config --global " + key + " ";
             if (command.startsWith(prefix)) {
                 List<String> args = ShellSyntax.words(command);
-                if (args.size() != 5) throw new IllegalArgumentException("Une valeur entre guillemets est attendue.");
+                if (args.size() != 5) throw new IllegalArgumentException("Une seule valeur est attendue ; entoure les noms contenant des espaces de guillemets.");
                 identityPrefs.edit().putString(key, args.get(4)).apply();
                 if (hasLocalRepository()) try (Git git = Git.open(workTree())) {
                     git.getRepository().getConfig().setString("user", null, key.substring(5), args.get(4));
@@ -951,7 +961,7 @@ public final class RealGitClient {
     }
 
     private CredentialsProvider credentials() {
-        String token = tokenStore.loadToken();
+        String token = tokenSource.get();
 
         if (token.isEmpty()) {
             throw new IllegalStateException(
