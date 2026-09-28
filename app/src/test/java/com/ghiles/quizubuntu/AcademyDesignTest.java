@@ -38,4 +38,21 @@ public class AcademyDesignTest {
         for(AcademyChapters.Chapter chapter:AcademyChapters.ALL){List<MainActivity.Question> questions=AcademyChapters.questions(all,chapter.category);assertFalse(chapter.category,questions.isEmpty());covered+=questions.size();for(MainActivity.Question q:questions)assertEquals(chapter.category,q.category);}
         assertEquals(all.size(),covered);c.pause().stop().destroy();
     }
+    @Test public void renderPermissionsCorrectionCollapsedAndExpandedOnPhone()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();
+        MainActivity activity=c.get();
+        List<MainActivity.Question> all=(List<MainActivity.Question>)field(activity,"questions");
+        MainActivity.Question permission=null;
+        for(MainActivity.Question q:all)if(q.text.startsWith("Dans -rw-r--r--")){permission=q;break;}
+        assertNotNull(permission);
+        Field quiz=MainActivity.class.getDeclaredField("quiz");quiz.setAccessible(true);
+        quiz.set(activity,new ArrayList<>(Collections.singletonList(permission)));
+        call(activity,"showQuizScreen");
+        ((android.widget.EditText)field(activity,"writtenAnswer")).setText("1");
+        call(activity,"answerWritten");
+        capture(activity,"permissions-correction");
+        ((android.widget.Button)field(activity,"moreDetailsButton")).performClick();
+        capture(activity,"permissions-details");
+        c.pause().stop().destroy();
+    }
 }
