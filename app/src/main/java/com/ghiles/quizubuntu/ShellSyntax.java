@@ -5,6 +5,16 @@ import java.util.List;
 
 /** Small quote-aware parser. No system shell or command substitution is executed. */
 final class ShellSyntax {
+    static boolean hasShortOption(String command, char option) {
+        List<String> args = words(command);
+        for (int i = 1; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (arg.equals("--")) break;
+            if (arg.startsWith("-") && !arg.startsWith("--") && arg.indexOf(option, 1) >= 0) return true;
+        }
+        return false;
+    }
+
     static List<String> words(String input) {
         List<String> result = new ArrayList<>();
         StringBuilder word = new StringBuilder();

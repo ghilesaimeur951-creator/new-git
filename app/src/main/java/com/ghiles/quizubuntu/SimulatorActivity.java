@@ -1427,7 +1427,7 @@ public class SimulatorActivity extends Activity {
                 if (!result.text.endsWith("\n")) appendRaw("\n");
             }
 
-            boolean longFormat = command.contains("-l");
+            boolean longFormat = ShellSyntax.hasShortOption(command, 'l');
 
             for (int i = 0; i < result.entries.size(); i++) {
                 VirtualMachine.FsEntry entry = result.entries.get(i);
