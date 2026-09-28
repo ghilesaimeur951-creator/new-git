@@ -414,10 +414,20 @@ public final class VirtualMachine {
             return listSsh();
         }
 
-        if ("ls".equals(n) || n.startsWith("ls -")) {
-            boolean longFormat = n.contains("l");
-            boolean showHidden = n.contains("a") || n.contains("A");
-            return list(longFormat, showHidden);
+        if ("ls".equals(n) || n.startsWith("ls ")) {
+            boolean all = ShellSyntax.hasShortOption(command, 'a');
+            boolean almostAll = ShellSyntax.hasShortOption(command, 'A');
+            List<String> lsWords = ShellSyntax.words(command);
+            String target = cwd;
+            boolean optionsEnded = false;
+            for (int i = 1; i < lsWords.size(); i++) {
+                String arg = lsWords.get(i);
+                if (arg.equals("--")) { optionsEnded = true; continue; }
+                if (!optionsEnded && arg.startsWith("-")) continue;
+                target = resolve(arg);
+            }
+            if (!directories.contains(target)) return Result.error("ls: " + target + ": Aucun dossier");
+            return list(target, all || almostAll, all);
         }
 
         if ("cd".equals(n) || "cd ~".equals(n)) {
@@ -1087,6 +1097,7 @@ public final class VirtualMachine {
             cwd = newRoot;
             gitInitialized = true;
             repoRoot = newRoot;
+            ensureDir(repoRoot + "/.git");
             headBranch = "main";
             branches.clear();
             commits.clear();
@@ -1113,6 +1124,7 @@ public final class VirtualMachine {
             if (inGitRepo()) return Result.success("Dépôt Git existant réinitialisé sans modifier son historique.");
             gitInitialized = true;
             repoRoot = cwd;
+            ensureDir(repoRoot + "/.git");
             headBranch = "main";
             branches.clear();
             commits.clear();
@@ -2418,21 +2430,13 @@ public final class VirtualMachine {
         return Result.normal("");
     }
 
-    private Result list(boolean longFormat, boolean showHidden) {
-        List<FsEntry> entries = childrenOf(cwd, showHidden);
-
-        if (!longFormat) {
-            return Result.ls(entries, "");
+    private Result list(String directory, boolean showHidden, boolean includeDots) {
+        List<FsEntry> entries = childrenOf(directory, showHidden);
+        if (includeDots) {
+            entries.add(0, new FsEntry("..", true));
+            entries.add(0, new FsEntry(".", true));
         }
-
-        StringBuilder prefix = new StringBuilder();
-
-        if (showHidden) {
-            prefix.append("drwxr-xr-x  .\n")
-                .append("drwxr-xr-x  ..\n");
-        }
-
-        return Result.ls(entries, prefix.toString());
+        return Result.ls(entries, "");
     }
 
     private Result listSsh() {
@@ -2551,7 +2555,7 @@ public final class VirtualMachine {
     }
 
     private boolean inGitRepo() {
-        return gitInitialized &&
+        return gitInitialized && directories.contains(repoRoot + "/.git") &&
             (cwd.equals(repoRoot) || cwd.startsWith(repoRoot + "/"));
     }
 
@@ -2561,9 +2565,10 @@ public final class VirtualMachine {
 
         files.putIfAbsent(root + "/README.md", "# Projet\n");
 
-        if (!gitInitialized || !root.equals(repoRoot)) {
+        if (!gitInitialized || !root.equals(repoRoot) || !directories.contains(root + "/.git")) {
             gitInitialized = true;
             repoRoot = root;
+            ensureDir(repoRoot + "/.git");
             headBranch = "main";
             branches.clear();
             commits.clear();
