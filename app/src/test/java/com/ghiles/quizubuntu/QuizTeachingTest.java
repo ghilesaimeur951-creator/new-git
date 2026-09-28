@@ -80,6 +80,7 @@ public class QuizTeachingTest {
         assertTrue(p.output.contains("alice:x:1000:1000"));
         assertTrue(p.focus.contains("deuxième"));
         assertTrue(p.context.contains("FICHIER"));
+        assertFalse(p.context.contains("/etc/shadow"));
         assertTrue(QuizTeaching.details(passwd,"Oui",false).contains("Le x n’est pas un mot de passe lisible"));
         MainActivity.Question mask=find(bank,"Avec umask 077");
         QuizPrimer masked=QuizPrimer.forQuestion(mask);
@@ -90,6 +91,7 @@ public class QuizTeachingTest {
         assertTrue(QuizPrimer.forQuestion(permissions).command.contains("ls -l notes.txt"));
         assertTrue(QuizPrimer.forQuestion(permissions).focus.contains("r--"));
         assertFalse(QuizPrimer.forQuestion(permissions).context.contains("0 droit d’écriture"));
+        assertTrue(QuizPrimer.forQuestion(find(bank,"Retire uniquement ton droit x")).context.contains("testdir est le nom d’un DOSSIER"));
         MainActivity.Question written=find(bank,"Affiche les comptes Linux avec cat");
         assertFalse(QuizPrimer.forQuestion(written).context.contains("cat /etc/passwd"));
         controller.pause().stop().destroy();

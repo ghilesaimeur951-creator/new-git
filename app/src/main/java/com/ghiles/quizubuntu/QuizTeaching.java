@@ -17,7 +17,7 @@ final class QuizTeaching {
         QuizPrimer primer=QuizPrimer.forQuestion(q);
         out.append("1. Ce que la question te demande\n").append(primer.question).append("\n\n");
         out.append("2. Comment trouver la réponse\n");
-        out.append(primer.context).append("\n");
+        out.append(primer.context).append("\n").append(concept(q.category)).append("\n");
         String specific = permissions(q, true);
         if (!specific.isEmpty()) out.append(specific).append("\n");
         String reason = cleanReason(q.explanation);

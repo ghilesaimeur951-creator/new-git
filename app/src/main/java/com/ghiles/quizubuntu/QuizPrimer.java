@@ -18,7 +18,7 @@ final class QuizPrimer {
         String command="",output="",focus="",question=t;
 
         if (t.startsWith("Dans /etc/passwd, x")) {
-            context="Linux conserve une liste de comptes dans le fichier /etc/passwd. Le chemin /etc/passwd désigne un FICHIER, pas une commande. cat est une commande qui affiche le contenu d’un fichier. Les deux-points séparent les champs d’une ligne : le premier donne le nom du compte, le deuxième contient ici x. Les ... raccourcissent cet exemple ; ce n’est pas un mot à taper. /home/alice est le dossier personnel d’alice et /bin/bash le programme de son terminal. /etc/shadow est un autre fichier protégé lié aux mots de passe.";
+            context="/etc/passwd est un FICHIER qui liste les comptes Linux ; ce chemin n’est pas une commande. cat est la COMMANDE qui montre son contenu. Dans la SORTIE, les deux-points séparent les champs : le premier est le nom du compte. Les ... raccourcissent l’exemple : on ne les tape pas. /home/alice est le dossier d’alice ; /bin/bash est son programme de terminal.";
             command="cat /etc/passwd";
             output="alice:x:1000:1000:...:/home/alice:/bin/bash";
             focus="Le x placé juste après « alice: » et avant le deuxième « : ». Il est dans la SORTIE de cat, pas dans la commande.";
@@ -37,7 +37,7 @@ final class QuizPrimer {
         } else if (t.startsWith("Avec umask 077") || t.startsWith("Avec umask 033")) {
             String mask=t.contains("077")?"077":"033";
             String file=t.contains("077")?"secret.txt":"note.txt";
-            context="umask fixe les droits retirés aux NOUVEAUX fichiers. touch crée un fichier vide. ls -l montre ses droits : r = lire, w = écrire, x = exécuter ; un fichier ordinaire peut commencer au maximum à 666 (rw-rw-rw-). Le nombre demandé est la traduction des trois groupes de droits en chiffres (r = 4, w = 2, x = 1).";
+            context="umask fixe les droits retirés aux NOUVEAUX fichiers. On suppose que le fichier nommé ici n’existe pas encore : touch le crée vide. ls -l montre ses droits : r = lire, w = écrire, x = exécuter ; un fichier ordinaire peut commencer au maximum à 666 (rw-rw-rw-). Le nombre demandé est la traduction des trois groupes de droits en chiffres (r = 4, w = 2, x = 1).";
             command="umask "+mask+"\ntouch "+file+"\nls -l "+file;
             output="-????????? 1 ubuntu ubuntu 0 "+file+"  ← droits à trouver";
             focus="Les neuf signes ? de la SORTIE de ls -l : calcule les trois chiffres correspondants. Les ? cachent seulement la réponse, pas une vraie sortie du terminal.";
@@ -57,7 +57,7 @@ final class QuizPrimer {
             output="5  ← si aucune deuxième valeur n’a été fournie";
             focus="Le rôle du 5 dans cet EXEMPLE avec $2. Applique le même mécanisme à ${3:-1}, sans confondre les numéros et la valeur de remplacement.";
         } else if (t.startsWith("Tu es sur cheese et crées un commit")) {
-            context="main et cheese sont deux branches : des noms qui pointent vers des versions enregistrées (commits). git switch choisit la branche de travail ; git commit enregistre une nouvelle version sur celle qui est active.";
+            context="main et cheese sont deux branches : des noms qui pointent vers des versions enregistrées (commits). Suppose qu’un fichier modifié a déjà été préparé. git switch choisit la branche de travail ; git commit enregistre alors une nouvelle version sur celle qui est active.";
             command="git switch cheese\ngit commit -m 'Pizza'\ngit branch -v";
             output="  main    [version à comparer]\n* cheese  [nouvelle version]";
             focus="La position de main après le commit sur cheese. L’astérisque indique seulement la branche active.";
@@ -86,7 +86,24 @@ final class QuizPrimer {
         if (t.startsWith("Que désigne le chemin « .. »"))
             context="Dans un CHEMIN de dossier, les deux points .. sont un signe spécial. cd est la commande pour changer de dossier. On cherche où l’on arrive quand on utilise ces signes.";
 
+        if (q.format.equals("Commande à écrire") || q.format.equals("Corriger une commande"))
+            context += "\n\n" + writingHint(q.category);
+
         return new QuizPrimer(context,command,output,focus,question);
+    }
+
+    private static String writingHint(String category) {
+        switch(category) {
+            case "Permissions": return "Pour composer la commande, utilise le modèle chmod <qui><changement><droits> <fichier-ou-dossier>. qui : u = propriétaire, g = groupe, o = autres ; changement : + ajouter, - retirer, = fixer ; droits : r, w, x. Les mots entre < > sont à remplacer par ceux de l’exercice.";
+            case "ACL et droits spéciaux": return "Repère d’abord si la consigne demande de lire, d’ajouter ou de retirer une règle. Une entrée ACL s’écrit sous la forme u:<personne>:<droits> ; remplace les mots entre < >. umask concerne seulement les nouvelles créations.";
+            case "Utilisateurs": return "Dans une commande, remplace <compte> ou <groupe> par le nom demandé. Pour lire un fichier, le modèle est cat <chemin-du-fichier> ; le chemin n’est pas une commande à lui seul.";
+            case "Bash": return "Une commande s’écrit avant son argument : <action> [option] <fichier-ou-dossier>. L’option commence souvent par -, et le nom du fichier est la cible, pas la commande.";
+            case "Git": case "Branches": case "Synchronisation": case "Conflits": return "Une commande Git commence par git, puis l’action et éventuellement une option ou un nom : git <action> [option] <cible>. Remplace chaque élément entre < > par ce que demande l’énoncé.";
+            case "SSH": return "Une commande SSH s’écrit avant le chemin d’une clé. Le chemin finissant par .pub désigne la clé publique ; le chemin sans .pub désigne la clé privée.";
+            case "VirtualBox": return "Une commande VirtualBox commence par VBoxManage, puis une action et le nom de la machine : VBoxManage <action> <nom-vm> [réglage]. Remplace les morceaux entre < >.";
+            case "Windows": return "Dans CMD, écris d’abord une commande, puis si nécessaire le nom du dossier ou du fichier. Un chemin Windows peut commencer par C:\\ et utilise des antislashs \\.";
+            default: return "Construis la commande en choisissant d’abord l’action, puis le fichier ou dossier ciblé.";
+        }
     }
 
     private static String chapter(String category) {
@@ -114,6 +131,9 @@ final class QuizPrimer {
         if (text.contains(".pub")) out.append(" Un chemin finissant par .pub désigne le FICHIER de clé publique.");
         if (text.contains("README.md")) out.append(" README.md est un FICHIER du projet ; son nom ne désigne pas une commande.");
         if (text.contains(".txt")) out.append(" Les noms finissant par .txt désignent des FICHIERS texte.");
+        if (text.contains("testdir")) out.append(" testdir est le nom d’un DOSSIER, pas une commande.");
+        if (text.contains("mondossier") || text.contains("partage-equipe")) out.append(" mondossier et partage-equipe sont des exemples de DOSSIERS ; leur nom va à la fin de la commande.");
+        if (text.contains("Ubuntu10")) out.append(" Ubuntu10 est le NOM choisi pour une machine virtuelle, pas une commande.");
         if (text.contains("dossier personnel") || text.contains("home")) out.append(" Le dossier personnel est l’espace de fichiers propre à un compte, souvent sous /home/nom.");
         if (text.contains("shell")) out.append(" Un shell est le programme qui lit les commandes tapées dans le terminal ; Bash en est un exemple.");
         if (text.contains("UID") || text.contains("GID")) out.append(" UID est le numéro d’un compte ; GID est le numéro d’un groupe.");
@@ -129,6 +149,7 @@ final class QuizPrimer {
         if (text.contains("sudo")) out.append(" sudo demande de lancer la commande avec une autorisation supplémentaire si ton compte y a droit.");
         if (text.contains("chmod")) out.append(" chmod est une commande qui modifie les droits ; le nom qui suit désigne le FICHIER ou DOSSIER ciblé.");
         if (text.contains("chown")) out.append(" chown modifie le propriétaire d’un fichier ou dossier.");
+        if (text.contains("git add")) out.append(" Dans une expression comme git add README.md, git add est la COMMANDE et README.md le FICHIER visé ; la question peut te demander de découvrir son effet.");
         if (text.contains("umask")) out.append(" umask enlève certains droits aux fichiers et dossiers créés ensuite ; il ne change pas les anciens.");
         if (text.contains("origin")) out.append(" origin est un nom court pour l’adresse du dépôt distant, souvent GitHub.");
         if (text.contains("HEAD")) out.append(" HEAD est un nom spécial de Git pour parler de la position actuelle ; cherche dans les choix ce qu’il désigne exactement ici.");
@@ -136,6 +157,7 @@ final class QuizPrimer {
         if (text.contains("staging") || text.contains("index")) out.append(" L’index (staging area) est la liste des modifications préparées pour le prochain commit.");
         if (text.contains("commit")) out.append(" Un commit est une version enregistrée localement avec un message.");
         if (text.contains("NAT")) out.append(" NAT est un mode réseau pour la machine virtuelle.");
+        if (text.contains("C:\\")) out.append(" C: indique le lecteur Windows ; l’antislash \\ sépare les noms de dossiers, comme / sous Linux.");
         if (text.contains("VMDK") || text.contains(".vmdk")) out.append(" Un fichier .vmdk représente un disque virtuel, pas une commande.");
         if (text.contains("ISO") || text.contains(".iso")) out.append(" Un fichier .iso contient une image de disque pouvant servir à installer un système.");
         if (text.contains("RAM")) out.append(" La RAM est la mémoire de travail ; elle se mesure ici en Mio ou en Gio.");
