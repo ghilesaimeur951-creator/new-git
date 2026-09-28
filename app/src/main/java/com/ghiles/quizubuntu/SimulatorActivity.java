@@ -662,7 +662,7 @@ public class SimulatorActivity extends Activity {
 
         Button openGitHub = smallButton("Voir le dépôt sur GitHub");
         openGitHub.setOnClickListener(v -> {
-            String name = realGit.selectedRepositoryName();
+            String name = realGit.activeRepositoryName();
             if (name.isEmpty()) { chooseRepository(); return; }
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/" + name)));
         });
@@ -1387,6 +1387,14 @@ public class SimulatorActivity extends Activity {
         appendPrompt(command);
 
         if (realEnvironment) {
+            if (command.equals("nano") || command.startsWith("nano ")) {
+                try {
+                    List<String> args = ShellSyntax.words(command);
+                    if (args.size() != 2) throw new IllegalArgumentException("Usage : nano fichier");
+                    showNanoEditor(realGit.editorPath(args.get(1)), true);
+                } catch (Exception e) { appendPlain("Erreur fichier réel : " + safeMessage(e) + "\n", ERROR_RED); refreshTerminal(); }
+                return;
+            }
             if (isDangerousRealCommand(command)) {
                 confirmDangerousRealCommand(command);
             } else {
@@ -1395,6 +1403,9 @@ public class SimulatorActivity extends Activity {
             return;
         }
 
+        if (command.startsWith("git push") || command.startsWith("git pull") || command.startsWith("git fetch") || command.startsWith("git clone")) {
+            appendPlain("[SIMULATION] Aucun échange avec GitHub. Les fichiers de ce mode sont virtuels. Pour synchroniser le téléphone, passe en GITHUB RÉEL et travaille dans son dossier.\n", Color.rgb(238,176,96));
+        }
         VirtualMachine.Result result = vm.execute(command);
         renderVirtualResult(command, result);
 
@@ -1512,7 +1523,7 @@ public class SimulatorActivity extends Activity {
     private void runRealCommandAsync(String command) {
         if (needsNetworkCredentials(command)) {
             boolean sshReady =
-                realGit.isUseSsh() &&
+                realGit.activeTransportIsSsh() &&
                 realGit.sshKeyStore().hasKey();
 
             if (!sshReady && !tokenStore.hasToken()) {
@@ -1604,7 +1615,12 @@ public class SimulatorActivity extends Activity {
             .show();
     }
 
-    private void showNanoEditor(String path) {
+    private void showNanoEditor(String path) { showNanoEditor(path, false); }
+
+    private void showNanoEditor(String path, boolean realFile) {
+        String content;
+        try { content = realFile ? realGit.readEditorFile(path) : vm.readFileForEditor(path); }
+        catch (Exception e) { appendPlain("Erreur fichier réel : " + safeMessage(e) + "\n", ERROR_RED); refreshTerminal(); return; }
         EditText editor = new EditText(this);
         editor.setMinLines(10);
         editor.setGravity(Gravity.TOP | Gravity.START);
@@ -1615,17 +1631,20 @@ public class SimulatorActivity extends Activity {
             InputType.TYPE_TEXT_FLAG_MULTI_LINE |
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         );
-        editor.setText(vm.readFileForEditor(path));
+        editor.setText(content);
         editor.setSelection(editor.getText().length());
         editor.setPadding(dp(14), dp(12), dp(14), dp(12));
 
         new AlertDialog.Builder(this)
-            .setTitle("GNU nano — " + path)
+            .setTitle((realFile ? "Fichier réel — " : "GNU nano — ") + path)
             .setView(editor)
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Enregistrer", (dialog, which) -> {
-                vm.saveEditedFile(path, editor.getText().toString());
-                appendPlain("[nano] fichier enregistré\n", SUCCESS_GREEN);
+                try {
+                    if (realFile) realGit.saveEditorFile(path, editor.getText().toString());
+                    else vm.saveEditedFile(path, editor.getText().toString());
+                    appendPlain(realFile ? "[réel] Fichier enregistré sur le téléphone. Pour l'envoyer : git add, git commit, git push.\n" : "[nano] fichier enregistré\n", SUCCESS_GREEN);
+                } catch (Exception e) { appendPlain("Échec de l'enregistrement : " + safeMessage(e) + "\n", ERROR_RED); }
                 updateCommandPrompt();
                 refreshTerminal();
                 commandInput.requestFocus();
@@ -1908,7 +1927,7 @@ public class SimulatorActivity extends Activity {
         if (realStatusView == null) return;
 
         String login = prefs.getString("realGitHubLogin", "");
-        String repo = realGit.selectedRepositoryName();
+        String repo = realGit.activeRepositoryName();
         String branch = realGit.currentBranch();
 
         StringBuilder text = new StringBuilder();
@@ -1918,14 +1937,15 @@ public class SimulatorActivity extends Activity {
             : "Compte : non connecté");
 
         text.append("\norigin : ")
-            .append(repo.isEmpty() ? "aucun dépôt sélectionné" : repo);
+            .append(repo.isEmpty() ? "aucun remote dans ce dossier" : repo);
 
+        text.append("\ndossier : ").append(realGit.displayPath());
         if (!branch.isEmpty()) {
             text.append("\nbranche locale : ").append(branch);
         }
 
         text.append("\ntransport Git : ")
-            .append(realGit.isUseSsh() ? "SSH/JGit" : "HTTPS/JGit");
+            .append(realGit.activeTransportIsSsh() ? "SSH/JGit" : "HTTPS/JGit");
 
         if (realGit.sshKeyStore().hasKey()) {
             RealSshKeyStore.KeyInfo key = realGit.sshKeyStore().info();
