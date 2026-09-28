@@ -465,7 +465,7 @@
     "passed": true,
     "expected_exit": 0,
     "actual_exit": 0,
-    "expected": "  File: script.sh\n  Size: 54        \tBlocks: 8          IO Block: 4096   regular file\nDevice: 0,27\tInode: 526372      Links: 1\nAccess: (0755/-rwxr-xr-x)  Uid: (    0/    root)   Gid: (    0/    root)\nAccess: 2026-09-28 10:03:11.490013837 +0300\nModify: 2026-09-28 10:03:11.476994214 +0300\nChange: 2026-09-28 10:03:11.498705630 +0300\n Birth: 2026-09-28 10:03:11.476970829 +0300\n",
+    "expected": "  File: script.sh\n  Size: 54        \tBlocks: 8          IO Block: 4096   regular file\nDevice: 0,27\tInode: 526452      Links: 1\nAccess: (0755/-rwxr-xr-x)  Uid: (    0/    root)   Gid: (    0/    root)\nAccess: 2026-09-28 10:13:26.967090164 +0300\nModify: 2026-09-28 10:13:26.956146075 +0300\nChange: 2026-09-28 10:13:26.974531780 +0300\n Birth: 2026-09-28 10:13:26.956125113 +0300\n",
     "actual": "  Fichier : script.sh\n  Taille : 54\n  Accès : (0755)\n  Propriétaire : ubuntu\n  Groupe : ubuntu\n",
     "stderr": ""
   },
@@ -494,7 +494,7 @@
     "command": "ls tmp",
     "passed": true,
     "expected_exit": 2,
-    "actual_exit": 1,
+    "actual_exit": 2,
     "expected": "",
     "actual": "",
     "stderr": "ls: cannot access 'tmp': No such file or directory\n"
@@ -597,6 +597,186 @@
     "actual_exit": 0,
     "expected": "README.md\n",
     "actual": "README.md\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -1",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "README.md\na\na.txt\nancien.txt\nb.txt\ndossier\nempty\nfichier.log\nfichier.txt\nscript.sh\nsource\nsource.txt\nsrc\ntest\n",
+    "actual": "README.md\na\na.txt\nancien.txt\nb.txt\ndossier\nempty\nfichier.log\nfichier.txt\nscript.sh\nsource\nsource.txt\nsrc\ntest\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -r",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "test\nsrc\nsource.txt\nsource\nscript.sh\nfichier.txt\nfichier.log\nempty\ndossier\nb.txt\nancien.txt\na.txt\na\nREADME.md\n",
+    "actual": "test\nsrc\nsource.txt\nsource\nscript.sh\nfichier.txt\nfichier.log\nempty\ndossier\nb.txt\nancien.txt\na.txt\na\nREADME.md\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -d",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": ".\n",
+    "actual": ".\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls README.md fichier.txt",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "README.md\nfichier.txt\n",
+    "actual": "README.md\nfichier.txt\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -d dossier src",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "dossier\nsrc\n",
+    "actual": "dossier\nsrc\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -R dossier",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "dossier:\nfile.txt\nsub\n\ndossier/sub:\n",
+    "actual": "dossier:\nfile.txt\nsub\n\ndossier/sub:\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -F dossier",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "file.txt\nsub/\n",
+    "actual": "file.txt\nsub/\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "ls -1 absent README.md",
+    "passed": true,
+    "expected_exit": 2,
+    "actual_exit": 2,
+    "expected": "README.md\n",
+    "actual": "README.md\n",
+    "stderr": "ls: cannot access 'absent': No such file or directory\n"
+  },
+  {
+    "setup": "mkdir listing; printf abc > listing/a; printf abcdef > listing/b; touch listing/c",
+    "command": "ls -S listing",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "b\na\nc\n",
+    "actual": "b\na\nc\n",
+    "stderr": ""
+  },
+  {
+    "setup": "mkdir listing; printf abc > listing/a; printf abcdef > listing/b; touch listing/c",
+    "command": "ls -Sr listing",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "c\na\nb\n",
+    "actual": "c\na\nb\n",
+    "stderr": ""
+  },
+  {
+    "setup": "chmod 755 script.sh",
+    "command": "ls -F script.sh",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "script.sh*\n",
+    "actual": "script.sh*\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git add README.md; git commit --amend --no-edit",
+    "command": "git status --porcelain",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "",
+    "actual": "",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; echo amend > README.md; git add README.md; git commit --amend -m revised",
+    "command": "cat README.md",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "amend\n",
+    "actual": "amend\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git switch -c topic; echo topic > README.md; git add README.md; git commit -m topic; git switch main",
+    "command": "git branch --merged",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "  feature\n* main\n",
+    "actual": "  feature\n* main\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git switch -c topic; echo topic > README.md; git add README.md; git commit -m topic; git switch main",
+    "command": "git branch --no-merged",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "  topic\n",
+    "actual": "  topic\n",
+    "stderr": ""
+  },
+  {
+    "setup": "",
+    "command": "git branch --contains HEAD",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "  feature\n* main\n",
+    "actual": "  feature\n* main\n",
+    "stderr": ""
+  },
+  {
+    "setup": "git restore README.md; git switch --detach HEAD",
+    "command": "git branch --show-current",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "",
+    "actual": "",
+    "stderr": ""
+  },
+  {
+    "setup": "git init -b trunk newrepo",
+    "command": "cd newrepo; git branch --show-current",
+    "passed": true,
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "expected": "trunk\n",
+    "actual": "trunk\n",
     "stderr": ""
   }
 ]

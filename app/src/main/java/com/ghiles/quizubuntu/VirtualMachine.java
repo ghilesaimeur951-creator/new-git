@@ -49,6 +49,7 @@ public final class VirtualMachine {
         public final int exitCode;
         public final String stdout;
         public final String stderr;
+        private String pipeOutput;
 
         private Result(Kind kind, String text, List<FsEntry> entries, String editPath) {
             this(kind, text, entries, editPath, kind == Kind.ERROR ? 1 : 0);
@@ -477,25 +478,7 @@ public final class VirtualMachine {
             );
         }
 
-        if ("ls -al ~/.ssh".equals(n) || "ls -la ~/.ssh".equals(n)) {
-            return listSsh();
-        }
-
-        if ("ls".equals(n) || n.startsWith("ls ")) {
-            boolean all = ShellSyntax.hasShortOption(command, 'a');
-            boolean almostAll = ShellSyntax.hasShortOption(command, 'A');
-            List<String> lsWords = ShellSyntax.words(command);
-            String target = cwd;
-            boolean optionsEnded = false;
-            for (int i = 1; i < lsWords.size(); i++) {
-                String arg = lsWords.get(i);
-                if (arg.equals("--")) { optionsEnded = true; continue; }
-                if (!optionsEnded && arg.startsWith("-")) continue;
-                target = resolve(arg);
-            }
-            if (!directories.contains(target)) return Result.error("ls: " + target + ": Aucun dossier");
-            return list(target, all || almostAll, all);
-        }
+        if ("ls".equals(n) || n.startsWith("ls ")) return executeLs(command);
 
         if ("cd".equals(n) || "cd ~".equals(n)) {
             previousCwd = cwd;
@@ -708,6 +691,7 @@ public final class VirtualMachine {
     }
 
     private String outputOf(Result result) {
+        if (result.pipeOutput != null) return result.pipeOutput;
         if (result.kind != Kind.LS) return result.stdout;
         StringBuilder out = new StringBuilder(result.stdout);
         for (FsEntry entry : result.entries) out.append(entry.name).append('\n');
@@ -1561,8 +1545,32 @@ public final class VirtualMachine {
             );
         }
 
+        if (n.startsWith("git init ")) {
+            List<String> args = ShellSyntax.words(command);
+            String destination = null, branch = "main";
+            for (int i = 2; i < args.size(); i++) {
+                String arg = args.get(i);
+                if (arg.equals("-b") || arg.equals("--initial-branch")) {
+                    if (++i == args.size()) return Result.error("git init: nom de branche requis");
+                    branch = args.get(i);
+                } else if (arg.startsWith("-")) return Result.error("git init: option non prise en charge " + arg);
+                else if (destination == null) destination = arg;
+                else return Result.error("git init: trop de destinations");
+            }
+            String root = destination == null ? cwd : resolve(destination);
+            if (files.containsKey(root)) return Result.error("git init: la destination est un fichier");
+            boolean existing = gitInitialized && repoRoot.equals(root) && directories.contains(root + "/.git");
+            if (!existing && directories.contains(root + "/.git")) return Result.error("Ce dépôt n'est plus chargé dans le simulateur à dépôt unique.");
+            String previous = cwd;
+            try {
+                ensureDir(root); cwd = root;
+                Result result = executeGit("git init");
+                if (!existing && !branch.equals("main")) { branches.remove("main"); branches.put(branch, ""); headBranch = branch; }
+                return result;
+            } finally { cwd = previous; }
+        }
         if ("git init".equals(n)) {
-            if (inGitRepo()) return Result.success("Dépôt Git existant réinitialisé sans modifier son historique.");
+            if (gitInitialized && repoRoot.equals(cwd) && directories.contains(repoRoot + "/.git")) return Result.success("Dépôt Git existant réinitialisé sans modifier son historique.");
             gitInitialized = true;
             repoRoot = cwd;
             ensureDir(repoRoot + "/.git");
@@ -1572,6 +1580,8 @@ public final class VirtualMachine {
             commits.clear();
             staged.clear();
             headSnapshot = new LinkedHashMap<>();
+            remoteOrigin = ""; remoteName = "origin"; remoteBranches.clear(); originMain = "";
+            tags.clear(); stashSnapshots.clear(); conflictActive = false; mergePending = false;
             branches.put("main", "");
 
             return Result.success(
@@ -1615,7 +1625,21 @@ public final class VirtualMachine {
             Commit head=findCommit("HEAD"); if(head==null)return Result.error("git tag: aucun commit");
             tags.put(name,head.hash); return Result.normal("");
         }
-        if(n.equals("git branch --show-current")) return Result.normal(headBranch+"\n");
+        if(n.equals("git branch --show-current")) return Result.normal(detachedHead == null ? headBranch+"\n" : "");
+        if (n.startsWith("git branch --merged") || n.startsWith("git branch --no-merged") || n.startsWith("git branch --contains")) {
+            List<String> args = ShellSyntax.words(command);
+            if (args.size() > 4) return Result.error("git branch: trop de références");
+            Commit ref = findCommit(args.size() == 4 ? args.get(3) : "HEAD");
+            if (ref == null) return Result.error("git branch: référence inconnue");
+            List<String> names = new ArrayList<>(branches.keySet()); Collections.sort(names);
+            StringBuilder out = new StringBuilder();
+            for (String name : names) {
+                boolean match = args.get(2).equals("--contains") ? isAncestor(ref.hash, branches.get(name)) : isAncestor(branches.get(name), ref.hash);
+                if (args.get(2).equals("--no-merged")) match = !match;
+                if (match) out.append(detachedHead == null && name.equals(headBranch) ? "* " : "  ").append(name).append('\n');
+            }
+            return Result.normal(out.toString());
+        }
         if(n.equals("git branch -r")) { StringBuilder out=new StringBuilder(); for(String branch:remoteBranches.keySet())out.append("  origin/").append(branch).append('\n'); return Result.normal(out.toString()); }
         if(n.equals("git branch -v")||n.equals("git branch -vv")) {
             StringBuilder out=new StringBuilder(); for(String branch:branches.keySet()) { Commit c=findCommit(branch); out.append(branch.equals(headBranch)?"* ":"  ").append(branch).append(' ').append(c==null?"":c.hash+" "+c.message).append('\n'); } return Result.normal(out.toString());
@@ -1661,6 +1685,24 @@ public final class VirtualMachine {
             }
             if(conflictActive&&candidates.contains(relativeToRepo(conflictFile))) conflictActive=false;
             return Result.normal("");
+        }
+        if (gitWords.size() >= 3 && gitWords.get(1).equals("commit") && gitWords.contains("--amend")) {
+            Commit previous = findCommit("HEAD");
+            if (previous == null) return Result.error("git commit: aucun commit à modifier");
+            if (conflictActive || mergePending) return Result.error("git commit: résoudre la fusion avant amend");
+            String message = previous.message;
+            boolean supplied = gitWords.contains("--no-edit");
+            for (int i = 2; i < gitWords.size(); i++) {
+                String arg = gitWords.get(i);
+                if (arg.equals("-m")) {
+                    if (++i == gitWords.size()) return Result.error("git commit: message requis");
+                    message = gitWords.get(i); supplied = true;
+                } else if (!arg.equals("--amend") && !arg.equals("--no-edit")) return Result.error("git commit --amend: option non prise en charge");
+            }
+            if (!supplied) return Result.error("Édition interactive du message non disponible : utilise --amend -m message ou --amend --no-edit.");
+            if (message.isEmpty()) return Result.error("git commit: message vide");
+            Commit amended = createCommit(message, previous.parent);
+            return Result.success("[" + headBranch + " " + amended.hash + "] " + message);
         }
         if (n.startsWith("git commit -am ")) {
             executeGit("git add -u");
@@ -3065,6 +3107,85 @@ public final class VirtualMachine {
         return Result.normal("");
     }
 
+    private Result executeLs(String command) {
+        List<String> words = ShellSyntax.words(command), operands = new ArrayList<>();
+        StringBuilder flags = new StringBuilder(); boolean ended = false;
+        for (int i = 1; i < words.size(); i++) {
+            String arg = words.get(i);
+            if (!ended && arg.equals("--")) { ended = true; continue; }
+            if (!ended && arg.startsWith("--color=")) continue;
+            if (!ended && arg.startsWith("-") && !arg.equals("-")) {
+                for (char flag : arg.substring(1).toCharArray()) {
+                    if ("laAh1rSdRF".indexOf(flag) < 0) return Result.error("ls: option non implémentée : -" + flag);
+                    flags.append(flag);
+                }
+            } else operands.add(arg);
+        }
+        boolean all = flags.indexOf("a") >= 0, hidden = all || flags.indexOf("A") >= 0;
+        boolean directoryOnly = flags.indexOf("d") >= 0, recursive = flags.indexOf("R") >= 0 && !directoryOnly;
+        if (operands.isEmpty()) operands.add(".");
+        List<FsEntry> direct = new ArrayList<>(); List<String> dirs = new ArrayList<>();
+        StringBuilder errors = new StringBuilder();
+        for (String operand : operands) {
+            String path = resolve(operand);
+            if (!files.containsKey(path) && !directories.contains(path)) { errors.append("ls: ").append(operand).append(": Aucun fichier ou dossier\n"); continue; }
+            if (directories.contains(path) && !directoryOnly) dirs.add(operand);
+            else direct.add(fsEntry(operand, path, directories.contains(path)));
+        }
+        java.util.Comparator<FsEntry> order = (x, y) -> x.name.compareTo(y.name);
+        if (flags.indexOf("S") >= 0) order = java.util.Comparator.<FsEntry>comparingLong(e -> lsSize(resolve(e.name))).reversed().thenComparing(e -> e.name);
+        if (flags.indexOf("r") >= 0) order = order.reversed();
+        direct.sort(order); Collections.sort(dirs); if (flags.indexOf("r") >= 0) Collections.reverse(dirs);
+        List<FsEntry> simple = new ArrayList<>(direct);
+        StringBuilder output = new StringBuilder();
+        for (FsEntry entry : direct) output.append(lsLine(entry, flags)).append('\n');
+        for (String operand : dirs) {
+            String path = resolve(operand);
+            List<FsEntry> entries = lsEntries(path, hidden, all, flags);
+            if (dirs.size() == 1 && direct.isEmpty() && !recursive) simple = entries;
+            if (output.length() > 0) output.append('\n');
+            appendLsDirectory(output, operand, entries, flags, recursive || operands.size() > 1, recursive, hidden, all);
+        }
+        if (errors.length() > 0) return new Result(Kind.ERROR, output.toString(), errors.toString(), null, null, 2);
+        if (!recursive && (directoryOnly || dirs.isEmpty() || (dirs.size() == 1 && direct.isEmpty() && operands.size() == 1))) {
+            if (flags.indexOf("F") >= 0 || flags.indexOf("1") >= 0) return Result.normal(output.toString());
+            Result result = Result.ls(simple, "");
+            result.pipeOutput = output.toString();
+            return result;
+        }
+        return Result.normal(output.toString());
+    }
+
+    private long lsSize(String path) {
+        return directories.contains(path) ? 4096 : files.getOrDefault(path, "").getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+    }
+
+    private List<FsEntry> lsEntries(String path, boolean hidden, boolean all, StringBuilder flags) {
+        List<FsEntry> entries = childrenOf(path, hidden);
+        if (all) { entries.add(fsEntry(".", path, true)); entries.add(fsEntry("..", parent(path), true)); }
+        java.util.Comparator<FsEntry> order = (a, b) -> a.name.compareTo(b.name);
+        if (flags.indexOf("S") >= 0) order = java.util.Comparator.<FsEntry>comparingLong(e -> lsSize(path + "/" + e.name)).reversed().thenComparing(e -> e.name);
+        if (flags.indexOf("r") >= 0) order = order.reversed();
+        entries.sort(order); return entries;
+    }
+
+    private String lsLine(FsEntry entry, StringBuilder flags) {
+        String suffix = flags.indexOf("F") < 0 ? "" : entry.directory ? "/" : entry.permissions.contains("x") ? "*" : "";
+        return (flags.indexOf("l") >= 0 ? entry.permissions + "  " : "") + entry.name + suffix;
+    }
+
+    private void appendLsDirectory(StringBuilder out, String operand, List<FsEntry> entries, StringBuilder flags,
+                                   boolean heading, boolean recursive, boolean hidden, boolean all) {
+        if (heading) out.append(operand).append(":\n");
+        for (FsEntry entry : entries) out.append(lsLine(entry, flags)).append('\n');
+        if (recursive) for (FsEntry entry : entries) {
+            if (!entry.directory || entry.name.equals(".") || entry.name.equals("..")) continue;
+            String child = operand + (operand.endsWith("/") ? "" : "/") + entry.name;
+            out.append('\n');
+            appendLsDirectory(out, child, lsEntries(resolve(child), hidden, all, flags), flags, true, true, hidden, all);
+        }
+    }
+
     private Result list(String directory, boolean showHidden, boolean includeDots) {
         List<FsEntry> entries = childrenOf(directory, showHidden);
         if (includeDots) {
@@ -3126,7 +3247,9 @@ public final class VirtualMachine {
         return entries;
     }
 
-    private Commit createCommit(String message) {
+    private Commit createCommit(String message) { return createCommit(message, currentHeadHash()); }
+
+    private Commit createCommit(String message, String parent) {
         Map<String,String> snapshot = new LinkedHashMap<>(headSnapshot);
 
         for (String path : staged) {
@@ -3137,7 +3260,6 @@ public final class VirtualMachine {
             }
         }
 
-        String parent = currentHeadHash();
         String hash = String.format(Locale.ROOT, "%07x", commitCounter++ * 7919);
 
         Commit commit = new Commit(

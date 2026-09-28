@@ -32,6 +32,19 @@ cases += [
 ('git add README.md; git commit -m next; git reset --soft HEAD~1', 'git diff --cached --name-only'),
 ('git add README.md; git commit -m next; git reset --mixed HEAD~1', 'git diff --name-only'),
 ]
+cases += [('', c) for c in ['ls -1', 'ls -r', 'ls -d', 'ls README.md fichier.txt', 'ls -d dossier src', 'ls -R dossier', 'ls -F dossier', 'ls -1 absent README.md']]
+cases += [
+('mkdir listing; printf abc > listing/a; printf abcdef > listing/b; touch listing/c', 'ls -S listing'),
+('mkdir listing; printf abc > listing/a; printf abcdef > listing/b; touch listing/c', 'ls -Sr listing'),
+('chmod 755 script.sh', 'ls -F script.sh'),
+('git restore README.md; git add README.md; git commit --amend --no-edit', 'git status --porcelain'),
+('git restore README.md; echo amend > README.md; git add README.md; git commit --amend -m revised', 'cat README.md'),
+('git restore README.md; git switch -c topic; echo topic > README.md; git add README.md; git commit -m topic; git switch main', 'git branch --merged'),
+('git restore README.md; git switch -c topic; echo topic > README.md; git add README.md; git commit -m topic; git switch main', 'git branch --no-merged'),
+('', 'git branch --contains HEAD'),
+('git restore README.md; git switch --detach HEAD', 'git branch --show-current'),
+('git init -b trunk newrepo', 'cd newrepo; git branch --show-current'),
+]
 # Exclude platform-dependent stat text from stdout equality, but preserve it in the report.
 raw=''.join(enc(setup)+'\t'+enc(cmd)+'\n' for setup,cmd in cases)
 env=os.environ.copy()
@@ -48,7 +61,8 @@ for (setup,cmd),line in zip(cases,java.stdout.splitlines()):
         ge={**os.environ,'LC_ALL':'C','HOME':'/home/ubuntu','GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':'/dev/null'}
         for args in [['git','init','-q','-b','main'],['git','config','user.name','Test'],['git','config','user.email','test@example.com'],['git','add','.'],['git','commit','-qm','base'],['git','branch','feature']]: subprocess.run(args,cwd=p,env=ge,check=True,capture_output=True)
         with (p/'README.md').open('a') as f:f.write('change\n')
-        subprocess.run(['bash','-c',setup],cwd=p,env=ge,capture_output=True,timeout=5)
+        prepared=subprocess.run(['bash','-c',setup],cwd=p,env=ge,capture_output=True,timeout=5)
+        assert prepared.returncode == 0, (setup, prepared.stderr.decode(errors='replace'))
         oracle=subprocess.run(['bash','-c',cmd],cwd=p,env=ge,capture_output=True,timeout=5)
         expected=oracle.stdout.decode(errors='replace')
         equal=(int(status)==0 and actual==expected if oracle.returncode==0 else int(status)!=0)

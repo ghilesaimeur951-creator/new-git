@@ -1,4 +1,4 @@
-# Audit Ubuntu Lab 4.6 — 28 septembre 2026
+# Audit Ubuntu Lab 4.6.1 — 28 septembre 2026
 
 **Le moteur reste un simulateur pédagogique. L’objectif « toutes les commandes Ubuntu et toutes leurs combinaisons fonctionnent » n’est pas atteint.** Un résultat sans erreur ou une entrée de catalogue ne constitue pas une certification de conformité à Ubuntu.
 
@@ -8,12 +8,20 @@
 | --- | --- | --- |
 | Catalogue complet | 1 509 exemples exécutés, aucun plantage | Chaque sortie et code sont conservés dans `catalogue-results.json` ; les erreurs attendues dépendent du scénario |
 | Texte GNU | 5 904 / 5 904 comparaisons réussies | 984 variantes × six fichiers ; stdout et code exacts |
-| Scénarios Bash/Git | 60 / 60 réussis | Pipelines, conditions, fichiers, empreintes et opérations Git ; voir `scenarios.json` |
-| Suite JVM locale | 29 tests réussis | Inclut les 5 904 vecteurs GNU et l’ancien audit de 250 commandes |
+| Scénarios Bash/Git | 78 / 78 réussis | Pipelines, conditions, fichiers, empreintes et opérations Git ; voir `scenarios.json` |
+| Suite JVM locale | 33 tests réussis | Inclut les 5 904 vecteurs GNU et l’ancien audit de 250 commandes |
 
 Les 984 variantes combinent les options de `cat`, `grep`, `sort`, `wc`, `head` et `tail`. Ce ne sont pas 984 programmes différents. Les fichiers couvrent le texte de cours, le fichier vide, l’absence de saut de ligne final, les nombres, les accents/emoji et les caractères de contrôle. Trente-deux combinaisons `sort -n -d`, rejetées par GNU, ont été retirées du catalogue initial de 1 541 exemples.
 
 Les résultats détaillés sont reproductibles avec les scripts décrits dans [tools/README.md](../tools/README.md). `text-corpus.json` contient le bilan ; le fichier TSV des ressources JUnit conserve chaque commande, entrée et résultat GNU attendu. `catalogue-results.json` contient toutes les sorties du catalogue, y compris les échecs, sans les transformer artificiellement en succès.
+
+## Ajouts 4.6.1
+
+- `ls` : fichiers individuels, plusieurs chemins, ordre inverse, tri par taille, répertoires seuls, parcours récursif et indicateurs de type/exécutable. Les pipelines conservent les options d’affichage. Les erreurs de chemin renvoient le code 2.
+- `git init dossier` et `git init -b branche dossier` conservent le répertoire courant et isolent l’état du nouveau dépôt.
+- `git commit --amend --no-edit` et `git commit --amend -m message` utilisent l’index sans inclure les changements non indexés. La branche pointe vers le remplacement, avec le même parent ; les autres branches restent intactes.
+- Filtres `git branch --merged`, `--no-merged`, `--contains`, avec référence optionnelle. `--show-current` produit une sortie vide en HEAD détachée.
+- Les 78 comparaisons natives sont désormais exécutées par GitHub Actions. Une préparation native en échec fait échouer l’audit.
 
 ## Corrections
 
@@ -28,8 +36,8 @@ Les résultats détaillés sont reproductibles avec les scripts décrits dans [t
 
 ## Limites restantes — ne pas annoncer ces fonctions comme équivalentes à Ubuntu
 
-- 525 exemples hors corpus de texte ont été exécutés, mais ne sont pas tous certifiés par comparaison native. Plusieurs options et commandes restent absentes, dont rebase, amend, blame, certaines opérations stash/branches, grep récursif, certains tris et les interactions `-i`/`-p`.
-- `ls` conserve un affichage pédagogique : plusieurs options avancées ne modifient pas encore le résultat ; les dates et tailles ne constituent pas un véritable modèle de métadonnées Unix. Les horodatages de `touch` et les permissions d’accès ne sont pas entièrement émulés.
+- 525 exemples hors corpus de texte ont été exécutés, mais ne sont pas tous certifiés par comparaison native. Plusieurs options et commandes restent absentes, dont rebase, édition interactive d’amend, blame, certaines opérations stash/branches, grep récursif, certains tris et les interactions `-i`/`-p`.
+- `ls` prend désormais en charge les fichiers, plusieurs chemins, `-r`, `-S`, `-d`, `-R`, `-F` et `-1`. Son affichage long reste pédagogique ; le tri chronologique `-t` et les inodes `-i` sont explicitement refusés ; les dates et tailles ne constituent pas un véritable modèle de métadonnées Unix. Les horodatages de `touch` et les permissions d’accès ne sont pas entièrement émulés.
 - Les archives sont des instantanés en mémoire, **pas des fichiers tar/gzip/zip compatibles avec les outils externes**. Les archives importées et les données binaires ne sont pas prises en charge.
 - Le shell ne couvre pas Bash complet : substitutions, globbing général, descripteurs `2>`, scripts, tâches asynchrones et expansions complexes restent incomplets. L’affichage combiné stdout/stderr ne conserve pas tous les entrelacements temporels.
 - Git est un modèle d’apprentissage avec un seul dépôt actif : patches, reflog, auteurs, objets, tags, fusions divergentes et échanges distants ne reproduisent pas toutes les règles du vrai Git. Les clonages du simulateur sont des scénarios, pas des téléchargements.
