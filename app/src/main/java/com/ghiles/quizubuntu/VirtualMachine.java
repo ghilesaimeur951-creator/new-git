@@ -1110,6 +1110,7 @@ public final class VirtualMachine {
         }
 
         if ("git init".equals(n)) {
+            if (inGitRepo()) return Result.success("Dépôt Git existant réinitialisé sans modifier son historique.");
             gitInitialized = true;
             repoRoot = cwd;
             headBranch = "main";
@@ -1190,7 +1191,7 @@ public final class VirtualMachine {
         if ("git branch".equals(n)) return gitBranch(false);
         if ("git branch -a".equals(n)) return gitBranch(true);
 
-        if (n.startsWith("git branch -D ")) {
+        if (command.startsWith("git branch -D ")) {
             String name = command.substring("git branch -D ".length()).trim();
 
             if (name.equals(headBranch)) {
@@ -1339,7 +1340,7 @@ public final class VirtualMachine {
             return Result.success("Switched to a new branch '" + name + "'");
         }
 
-        if (n.startsWith("git checkout -B ")) {
+        if (command.startsWith("git checkout -B ")) {
             String name = command.substring("git checkout -B ".length()).trim();
             branches.put(name, branches.getOrDefault(headBranch, ""));
             headBranch = name;
@@ -2037,9 +2038,27 @@ public final class VirtualMachine {
         boolean decorate = command.contains("--decorate");
         boolean graph = command.contains("--graph");
 
-        List<Commit> list = new ArrayList<>(commits.values());
-        Collections.reverse(list);
-
+        List<String> args = ShellSyntax.words(command);
+        int limit = Integer.MAX_VALUE;
+        for (int i = 2; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (arg.equals("-n")) {
+                if (++i >= args.size()) return Result.error("git log : -n attend un nombre");
+                try { limit = Integer.parseInt(args.get(i)); }
+                catch (NumberFormatException e) { return Result.error("git log : nombre invalide"); }
+            } else if (arg.matches("-[0-9]+")) limit = Integer.parseInt(arg.substring(1));
+        }
+        if (limit < 0) return Result.error("git log : nombre négatif");
+        List<Commit> list = new ArrayList<>();
+        if (args.contains("--all")) {
+            list.addAll(commits.values());
+            Collections.reverse(list);
+        } else {
+            Commit cursor = findCommit("HEAD");
+            while (cursor != null) { list.add(cursor); cursor = commits.get(cursor.parent); }
+        }
+        if (list.size() > limit) list = new ArrayList<>(list.subList(0, limit));
+        if (args.contains("--reverse")) Collections.reverse(list);
         StringBuilder out = new StringBuilder();
 
         for (Commit commit : list) {
@@ -2075,6 +2094,21 @@ public final class VirtualMachine {
             }
 
             out.append('\n');
+            if (args.contains("-p") || args.contains("--stat") || args.contains("--name-only") || args.contains("--name-status")) {
+                Commit parent = commits.get(commit.parent);
+                Map<String,String> before = parent == null ? Collections.emptyMap() : parent.snapshot;
+                Set<String> changed = new LinkedHashSet<>(before.keySet());
+                changed.addAll(commit.snapshot.keySet());
+                for (String path : changed) {
+                    String old = before.get(path), next = commit.snapshot.get(path);
+                    if (java.util.Objects.equals(old, next)) continue;
+                    if (args.contains("-p")) out.append("diff --git a/").append(path).append(" b/").append(path)
+                        .append("\n-").append(old == null ? "" : old).append("\n+").append(next == null ? "" : next).append('\n');
+                    if (args.contains("--stat")) out.append(" ").append(path).append(" | modifié\n");
+                    if (args.contains("--name-status")) out.append(old == null ? "A\t" : next == null ? "D\t" : "M\t").append(path).append('\n');
+                    else if (args.contains("--name-only")) out.append(path).append('\n');
+                }
+            }
         }
 
         return Result.normal(out.toString().trim());

@@ -74,4 +74,18 @@ public class SimulatorRegressionTest {
         vm.execute("> text");
         assertEquals("", vm.execute("cat text").text);
     }
+    @Test public void logLimitsAndInitPreserveHistory() {
+        VirtualMachine vm = vm();
+        vm.execute("git init");
+        vm.execute("git add README.md");
+        vm.execute("git commit -m first");
+        vm.execute("echo second > README.md");
+        vm.execute("git add README.md");
+        vm.execute("git commit -m second");
+        assertFalse(vm.execute("git log --oneline -n 1").text.contains("first"));
+        assertEquals(VirtualMachine.Kind.ERROR, vm.execute("git log -n l0").kind);
+        assertTrue(vm.execute("git log -p -n 1").text.contains("+second"));
+        vm.execute("git init");
+        assertTrue(vm.execute("git log").text.contains("first"));
+    }
 }

@@ -42,4 +42,4 @@ C’est un simulateur pédagogique et un client Git Android, pas une distributio
 
 ## Vérification
 
-14 tests JVM réussis localement, incluant l’audit de 250 commandes existantes, le parcours du catalogue et les régressions staging, guillemets, redirections, Unicode, tri et recherche. La construction Android et les tests cryptographiques sont également lancés par GitHub Actions sur la pull request. Un essai sur téléphone réel (clavier, réseau, authentification et synchronisation bidirectionnelle) reste nécessaire.
+15 tests JVM réussis localement, incluant l’audit de 250 commandes existantes, le parcours du catalogue et les régressions staging, guillemets, redirections, Unicode, tri et recherche. La construction Android et les tests cryptographiques sont également exécutés par GitHub Actions sur la pull request. Un essai sur téléphone réel (clavier, réseau, authentification et synchronisation bidirectionnelle) reste nécessaire.
