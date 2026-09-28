@@ -10,7 +10,7 @@ public final class TerminalEditor extends EditText {
     private boolean secret;
     public void setSecret(boolean secret) {
         this.secret = secret;
-        setLongClickable(!secret);
+        // Keep Paste available for long tokens; Copy/Cut are blocked below.
         setTransformationMethod(secret ? new android.text.method.PasswordTransformationMethod() {
             @Override public CharSequence getTransformation(CharSequence source, android.view.View view) {
                 return new CharSequence() {
