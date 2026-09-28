@@ -294,6 +294,9 @@ public final class RealGitClient {
 
         try (Git git = Git.open(workTree())) {
             Repository repository = git.getRepository();
+            // Older sessions stored only remote.origin.url. JGit's pull needs
+            // a fetch refspec too, even if push already succeeded.
+            ensureOriginFetch(repository);
             for (String key : new String[]{"name", "email"}) {
                 String value = identityPrefs.getString("user." + key, "");
                 if (!value.isEmpty()) repository.getConfig().setString("user", null, key, value);
@@ -1037,7 +1040,15 @@ public final class RealGitClient {
             ConfigConstants.CONFIG_KEY_URL,
             url
         );
+        ensureOriginFetch(repository);
+        repository.getConfig().save();
+    }
 
+    private void ensureOriginFetch(Repository repository) throws Exception {
+        if (originUrl(repository).isEmpty() ||
+            repository.getConfig().getStringList("remote", "origin", "fetch").length != 0) return;
+        repository.getConfig().setString("remote", "origin", "fetch",
+            "+refs/heads/*:refs/remotes/origin/*");
         repository.getConfig().save();
     }
 

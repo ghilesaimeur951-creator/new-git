@@ -65,6 +65,12 @@ public class GitHubLiveSyncTest {
                 RealSyncResults.requireAccepted(computer.push().setRemote("origin")
                     .setCredentialsProvider(auth).add(branch).call());
 
+                // Reproduce a session created by older releases: URL and
+                // successful push, but no remote.origin.fetch configuration.
+                try (Git local = Git.open(phone.workTree())) {
+                    local.getRepository().getConfig().unset("remote", "origin", "fetch");
+                    local.getRepository().getConfig().save();
+                }
                 String pulled = phone.execute("git pull origin " + branch);
                 assertTrue(pulled, pulled.contains("computer.txt"));
                 assertEquals("Depuis GitHub\n", phone.execute("cat computer.txt"));
