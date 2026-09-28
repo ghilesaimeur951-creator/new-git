@@ -50,8 +50,16 @@ public class AcademyDesignTest {
         call(activity,"showQuizScreen");
         ((android.widget.EditText)field(activity,"writtenAnswer")).setText("1");
         call(activity,"answerWritten");
+        View surface=activity.getWindow().getDecorView();
+        surface.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));
+        surface.layout(0,0,360,800);
+        android.widget.ScrollView quizScroll=(android.widget.ScrollView)field(activity,"quizScroll");
+        quizScroll.scrollTo(0,((View)field(activity,"feedbackView")).getTop());
         capture(activity,"permissions-correction");
         ((android.widget.Button)field(activity,"moreDetailsButton")).performClick();
+        surface.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(800,View.MeasureSpec.EXACTLY));
+        surface.layout(0,0,360,800);
+        quizScroll.scrollTo(0,((View)field(activity,"moreDetailsButton")).getTop());
         capture(activity,"permissions-details");
         c.pause().stop().destroy();
     }
