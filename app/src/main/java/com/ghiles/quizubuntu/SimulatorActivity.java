@@ -48,18 +48,18 @@ import java.util.concurrent.Executors;
  */
 public class SimulatorActivity extends Activity {
 
-    private static final int UBUNTU_BG = Color.rgb(48, 10, 36);
-    private static final int TERMINAL_BG = Color.rgb(28, 28, 30);
-    private static final int TERMINAL_PANEL = Color.rgb(35, 35, 38);
+    private static final int UBUNTU_BG = Color.rgb(16, 22, 36);
+    private static final int TERMINAL_BG = Color.rgb(17, 24, 39);
+    private static final int TERMINAL_PANEL = Color.rgb(28, 38, 56);
     private static final int TERMINAL_TEXT = Color.rgb(238, 238, 238);
     private static final int TERMINAL_MUTED = Color.rgb(170, 170, 176);
-    private static final int UBUNTU_ORANGE = Color.rgb(233, 84, 32);
+    private static final int UBUNTU_ORANGE = Color.rgb(107, 91, 210);
     private static final int PROMPT_GREEN = Color.rgb(78, 201, 109);
-    private static final int PATH_BLUE = Color.rgb(94, 161, 255);
+    private static final int PATH_BLUE = Color.rgb(151, 186, 255);
     private static final int DIRECTORY_BLUE = Color.rgb(92, 160, 255);
     private static final int ERROR_RED = Color.rgb(255, 99, 105);
     private static final int SUCCESS_GREEN = Color.rgb(82, 201, 111);
-    private static final int REAL_RED = Color.rgb(242, 86, 86);
+    private static final int REAL_RED = Color.rgb(100, 216, 194);
 
     static class Scenario {
         final String title;
@@ -350,6 +350,7 @@ public class SimulatorActivity extends Activity {
 
     private SharedPreferences prefs;
     private VirtualMachine vm;
+    private AcademyFeedback audioFeedback;
     private SecureTokenStore tokenStore;
     private RealGitClient realGit;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -522,7 +523,7 @@ public class SimulatorActivity extends Activity {
         });
     }
 
-    @Override protected void onPause() { saveSession(); super.onPause(); }
+    @Override protected void onPause() { saveSession(); if(audioFeedback!=null)audioFeedback.release(); super.onPause(); }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -535,6 +536,7 @@ public class SimulatorActivity extends Activity {
         scenarios.add(new Scenario("S03 · Terminal Windows", "Atelier CMD virtuel distinct de Linux : crée Secured dans C:\\Users\\ubuntu, entre dedans, crée un fichier avec echo Bonjour > note.txt et affiche le contenu avec dir et type note.txt. Les ACL NTFS du challenge sont expliquées dans le quiz. exit revient à Ubuntu.", "mkdir Secured ; cd Secured ; dir. Sous Windows, les chemins utilisent des antislashs et une lettre de lecteur.", "s03-windows", new String[0]));
         prefs = getSharedPreferences("quiz_progress", MODE_PRIVATE);
         vm = new VirtualMachine();
+        audioFeedback = new AcademyFeedback(this);
         tokenStore = new SecureTokenStore(this);
         realGit = new RealGitClient(this, tokenStore);
 
@@ -1499,6 +1501,7 @@ public class SimulatorActivity extends Activity {
             )
             .apply();
 
+        if(audioFeedback!=null)audioFeedback.success();
         appendPlain("✓ Objectif réussi : +150 Lab XP\n", SUCCESS_GREEN);
 
         scenarioIndex = (scenarioIndex + 1) % scenarios.size();
@@ -2453,27 +2456,27 @@ public class SimulatorActivity extends Activity {
     }
 
     private Button accentButton(String text) {
-        Button button = new Button(this);
+        Button button = AcademyDesign.button(this);
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextSize(11f);
+        button.setTextSize(14f);
         button.setTextColor(Color.WHITE);
-        button.setBackground(rounded(UBUNTU_ORANGE, 9, 0));
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
+        AcademyDesign.style(button, UBUNTU_ORANGE, 9, 0);
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
         button.setPadding(dp(10), dp(7), dp(10), dp(7));
         return button;
     }
 
     private Button smallButton(String text) {
-        Button button = new Button(this);
+        Button button = AcademyDesign.button(this);
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextSize(10.5f);
+        button.setTextSize(13f);
         button.setTextColor(Color.rgb(45,45,49));
-        button.setBackground(rounded(Color.rgb(232,232,236), 9, 0));
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
+        AcademyDesign.style(button, Color.rgb(232,232,236), 9, 0);
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
         button.setPadding(dp(9), dp(6), dp(9), dp(6));
         return button;
     }
@@ -2497,20 +2500,14 @@ public class SimulatorActivity extends Activity {
     }
 
     private Button choiceButton(String text) {
-        Button button = new Button(this);
+        Button button = AcademyDesign.button(this);
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextSize(11.5f);
+        button.setTextSize(14f);
         button.setTextColor(Color.WHITE);
         button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         button.setTypeface(Typeface.MONOSPACE);
-        button.setBackground(
-            rounded(
-                TERMINAL_PANEL,
-                8,
-                Color.rgb(88,88,96)
-            )
-        );
+        AcademyDesign.style(button, TERMINAL_PANEL, 16, Color.rgb(66,79,105));
         button.setPadding(dp(11), dp(8), dp(11), dp(8));
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(

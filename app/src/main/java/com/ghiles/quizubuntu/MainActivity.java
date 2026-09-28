@@ -277,172 +277,75 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("quiz_progress", MODE_PRIVATE);
+        feedback = new AcademyFeedback(this);
         showHome();
     }
 
+    private AcademyFeedback feedback;
+    private String activeChapter;
+
     private void showHome() {
+        activeChapter=null;
         applySystemBars();
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(bgColor());
+        LinearLayout root=column(20,20,20,28);scroll.addView(root);
+        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView brand=text("Ubuntu & Git\nACADEMY",20,true);brand.setLineSpacing(dp(2),1f);
+        top.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+        Button settings=secondaryButton("Réglages");settings.setOnClickListener(v->showDesignSettings());top.addView(settings);root.addView(top);
+        TextView eyebrow=text("APPRENDRE EN PRATIQUANT",11,true);eyebrow.setLetterSpacing(.13f);eyebrow.setTextColor(secondaryTextColor());eyebrow.setPadding(0,dp(24),0,dp(10));root.addView(eyebrow);
+        LinearLayout hero=column(22,24,22,22);
+        GradientDrawable gradient=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(48,41,112),Color.rgb(80,71,167),Color.rgb(28,104,118)});gradient.setCornerRadius(dp(28));hero.setBackground(gradient);
+        TextView title=text("Une commande.\nUn nouveau réflexe.",29,true);title.setTextColor(Color.WHITE);title.setLineSpacing(dp(2),1f);hero.addView(title);
+        TextView subtitle=text("Des chapitres courts. Des exercices concrets.\nÀ ton rythme, depuis ton téléphone.",14,false);subtitle.setTextColor(Color.rgb(229,229,250));subtitle.setLineSpacing(dp(3),1f);subtitle.setPadding(0,dp(12),0,dp(18));hero.addView(subtitle);
+        int total=prefs.getInt("totalPoints",0),done=dailyAnswered();
+        TextView progress=text(total+" XP     ·     "+Math.min(done,10)+" / 10 aujourd’hui",13,true);progress.setTextColor(Color.rgb(174,242,225));hero.addView(progress);
+        AcademyChapters.Chapter resume=AcademyChapters.find(prefs.getString("lastChapter","Bash"));
+        Button begin=actionButton("Continuer : "+resume.category+"  →");begin.setTextColor(ACADEMY_INK);AcademyDesign.style(begin,Color.WHITE,18,0);begin.setOnClickListener(v->startCategoryQuiz(resume.category));hero.addView(begin,spaced(18));root.addView(hero);
+        addSection(root,"Ton espace de pratique");
+        LinearLayout terminalCard=column(18,18,18,16);terminalCard.setBackground(roundedDrawable(isDark()?Color.rgb(28,42,49):Color.rgb(226,243,239),24,0));
+        TextView terminalTitle=text(">_  Le terminal, pour de vrai",19,true);terminalCard.addView(terminalTitle);
+        addBody(terminalCard,"Fichiers, GitHub et sessions sauvegardées. Ou entraîne-toi dans les missions guidées.",14);
+        Button terminal=actionButton("Ouvrir le terminal");AcademyDesign.style(terminal,Color.rgb(8,105,109),18,0);terminal.setOnClickListener(v->startActivity(new Intent(this,SimulatorActivity.class)));terminalCard.addView(terminal);root.addView(terminalCard);
+        addSection(root,"Un chapitre. Son quiz.");
+        addBody(root,"11 sujets, des bases du terminal aux ACL. Chaque quiz reste dans le chapitre choisi.",14);
+        Button chapters=actionButton("Explorer les 11 chapitres  →");chapters.setOnClickListener(v->showCategoryPicker());root.addView(chapters);
+        int wrong=prefs.getStringSet("wrongQuestions",Collections.emptySet()).size();
+        Button review=secondaryFullButton(wrong>0?"Revoir mes erreurs  ·  "+wrong:"Mes révisions sont à jour  ✓");review.setEnabled(wrong>0);review.setOnClickListener(v->startReviewErrors());root.addView(review);
+        Button more=secondaryFullButton("Tous les entraînements et outils");more.setOnClickListener(v->showTrainingTools());root.addView(more);
+        TextView note=text("Régularité > vitesse. Une petite session suffit.",12,false);note.setTextColor(secondaryTextColor());note.setPadding(0,dp(12),0,dp(8));root.addView(note);
+        installAcademyPage(scroll,1);
+    }
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(bgColor());
-        LinearLayout root = column(18, 18, 18, 28);
-        scroll.addView(root);
-
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView brand = text(">_  Ubuntu & Git Academy", 26, true);
-        top.addView(brand, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-        Button theme = secondaryButton(isDark() ? "☀ Clair" : "☾ Sombre");
-        theme.setOnClickListener(v -> {
-            prefs.edit().putBoolean("darkMode", !isDark()).apply();
-            showHome();
-        });
-        top.addView(theme);
-        root.addView(top);
-
-        addBody(root, "Progresse par niveaux, révise tes erreurs et visualise tes résultats.", 16);
-
-        int totalPoints = prefs.getInt("totalPoints", 0);
-        int answeredTotal = prefs.getInt("answeredTotal", 0);
-        int correctTotal = prefs.getInt("correctTotal", 0);
-        int accuracy = answeredTotal == 0 ? 0 : (correctTotal * 100 / answeredTotal);
-        int bestStreak = prefs.getInt("bestStreak", 0);
-        int playerLevel = 1 + totalPoints / 1500;
-        int xpInLevel = totalPoints % 1500;
-        int wrongCount = prefs.getStringSet("wrongQuestions", Collections.emptySet()).size();
-
-        LinearLayout hero = column(18, 18, 18, 18);
-        hero.setBackground(roundedDrawable(accentSurfaceColor(), 24, 0));
-        TextView heroTitle = text("Niveau joueur " + playerLevel, 23, true);
-        hero.addView(heroTitle);
-        addBody(hero, totalPoints + " XP  •  Précision " + accuracy + "%  •  Série max " + bestStreak, 15);
-
-        ProgressBarView xpBar = new ProgressBarView(this, isDark());
-        xpBar.setProgress(xpInLevel * 100 / 1500);
-        hero.addView(xpBar, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(16)
-        ));
-        TextView xpLabel = text(xpInLevel + " / 1500 XP vers le niveau " + (playerLevel + 1), 13, false);
-        xpLabel.setPadding(0, dp(8), 0, 0);
-        hero.addView(xpLabel);
-        root.addView(hero, spaced(12));
-
-        int continueLevel = findContinueLevel();
-        Button continueButton = actionButton("▶ Continuer — Niveau " + continueLevel);
-        continueButton.setOnClickListener(v -> startLevel(continueLevel));
-        root.addView(continueButton, spaced(14));
-
-        Button review = secondaryFullButton(
-            wrongCount == 0 ? "Réviser mes erreurs — aucune erreur enregistrée"
-                            : "Réviser mes erreurs — " + wrongCount + " à revoir"
-        );
-        review.setEnabled(wrongCount > 0);
-        review.setAlpha(wrongCount > 0 ? 1f : 0.55f);
-        review.setOnClickListener(v -> startReviewErrors());
-        root.addView(review);
-
-        addSection(root, "Modes avancés");
-
-        LinearLayout labCard = column(16, 16, 16, 16);
-        labCard.setBackground(roundedDrawable(surfaceColor(), 22, borderColor()));
-        TextView labTitle = text(">_  Laboratoire Ubuntu", 19, true);
-        labTitle.setTextColor(accentColor());
-        labCard.addView(labTitle);
-        addBody(labCard, "Ubuntu Lab V4 : missions guidées, terminal libre réaliste et mode GitHub réel sécurisé.", 14);
-        Button simulator = actionButton("Ouvrir Ubuntu Lab V4");
-        simulator.setOnClickListener(v -> startActivity(new Intent(this, SimulatorActivity.class)));
-        labCard.addView(simulator);
-        root.addView(labCard, spaced(10));
-
-        Button quick = secondaryFullButton("Quiz rapide — 10 questions");
-        quick.setOnClickListener(v -> startQuickQuiz());
-        root.addView(quick);
-
-        Button exam = secondaryFullButton("Mode examen — 20 questions");
-        exam.setOnClickListener(v -> startExam());
-        root.addView(exam);
-
-        Button adaptive = secondaryFullButton("Entraînement adaptatif");
-        adaptive.setOnClickListener(v -> startAdaptiveQuiz());
-        root.addView(adaptive);
-
-        Button targeted = secondaryFullButton("Révision ciblée par thème");
-        targeted.setOnClickListener(v -> showCategoryPicker());
-        root.addView(targeted);
-
-        Button lessons = secondaryFullButton("Fiches de cours");
-        lessons.setOnClickListener(v -> showCourseMenu());
-        root.addView(lessons);
-
-        Button library = secondaryFullButton("Bibliothèque — rechercher, copier, favoris");
-        library.setOnClickListener(v -> showCommandLibrary(""));
-        root.addView(library);
-
-        Button export = secondaryFullButton("Exporter ma progression");
-        export.setOnClickListener(v -> shareProgress());
-        root.addView(export);
-
-        addSection(root, "Objectif du jour");
-        int dailyDone = dailyAnswered();
-        int dailyGoal = 10;
-        TextView daily = card(
-            "Aujourd'hui : " + Math.min(dailyDone, dailyGoal) + " / " + dailyGoal + " questions\n" +
-            "Série quotidienne : " + prefs.getInt("dailyStreak", 0) + " jour(s)\n" +
-            (dailyDone >= dailyGoal ? "✓ Objectif quotidien atteint" : "Encore " + (dailyGoal - dailyDone) + " question(s) pour terminer")
-        );
-        root.addView(daily);
-
-        addSection(root, "Parcours");
-
-        for (LevelInfo info : levels) {
-            boolean unlocked = isLevelUnlocked(info.number);
-            int best = prefs.getInt("best_level_" + info.number, 0);
-
-            LinearLayout levelCard = column(16, 16, 16, 16);
-            levelCard.setBackground(roundedDrawable(surfaceColor(), 22, borderColor()));
-
-            TextView name = text(
-                (best >= PASS_PERCENT ? "✓  " : unlocked ? "●  " : "🔒  ") +
-                "Niveau " + info.number + " — " + info.title,
-                18, true
-            );
-            levelCard.addView(name);
-
-            addBody(levelCard, info.description, 14);
-
-            LinearLayout scoreRow = new LinearLayout(this);
-            scoreRow.setOrientation(LinearLayout.HORIZONTAL);
-            scoreRow.setGravity(Gravity.CENTER_VERTICAL);
-            TextView score = text("Meilleur score", 13, false);
-            scoreRow.addView(score, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-            TextView scoreValue = text(best + "%", 14, true);
-            scoreRow.addView(scoreValue);
-            levelCard.addView(scoreRow);
-
-            ProgressBarView progress = new ProgressBarView(this, isDark());
-            progress.setProgress(best);
-            levelCard.addView(progress, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(12)
-            ));
-
-            Button start = secondaryFullButton(
-                unlocked ? (best > 0 ? "Rejouer / améliorer" : "Commencer")
-                         : "Atteins 70% au niveau précédent"
-            );
-            start.setEnabled(unlocked);
-            start.setAlpha(unlocked ? 1f : 0.45f);
-            start.setOnClickListener(v -> startLevel(info.number));
-            levelCard.addView(start, spaced(10));
-
-            root.addView(levelCard, spaced(12));
-        }
-
-        addBottomNav(root, "Accueil");
-        protectFromSystemBars(scroll);
-        setContentView(scroll);
+    private static final int ACADEMY_INK=Color.rgb(29,35,52);
+    private void showDesignSettings(){
+        new android.app.AlertDialog.Builder(this).setTitle("À ton goût").setMultiChoiceItems(new String[]{"Thème sombre","Sons discrets"},new boolean[]{isDark(),prefs.getBoolean("soundEnabled",true)},(dialog,which,checked)->{
+            prefs.edit().putBoolean(which==0?"darkMode":"soundEnabled",checked).apply();
+            if(which==1&&!checked&&feedback!=null)feedback.release();
+        }).setPositiveButton("Appliquer",(d,w)->showHome()).show();
+    }
+    private void showTrainingTools(){
+        new android.app.AlertDialog.Builder(this).setTitle("Entraînements & outils").setItems(new String[]{"Quiz rapide · 10 questions","Examen · 20 questions","Entraînement adaptatif","Parcours par niveaux","Fiches de cours","Commandes et favoris","Mes badges","Exporter ma progression"},(d,i)->{
+            if(i==0)startQuickQuiz();else if(i==1)startExam();else if(i==2)startAdaptiveQuiz();else if(i==3)showLevelPicker();else if(i==4)showCourseMenu();else if(i==5)showCommandLibrary("");else if(i==6)showBadges();else shareProgress();
+        }).show();
+    }
+    private void showLevelPicker(){
+        LinearLayout root=column(20,20,20,24);ScrollView scroll=new ScrollView(this);scroll.addView(root);addTitle(root,"Parcours par niveaux",26);
+        addBody(root,"Le parcours historique reste disponible. 70 % débloquent le niveau suivant.",14);
+        for(LevelInfo level:levels){Button button=secondaryFullButton(level.number+" · "+level.title+"\nMeilleur score : "+prefs.getInt("best_level_"+level.number,0)+" %");button.setEnabled(isLevelUnlocked(level.number));button.setOnClickListener(v->startLevel(level.number));root.addView(button);}
+        installAcademyPage(scroll,2);
+    }
+    private void installAcademyPage(ScrollView scroll,int selected){
+        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setBackgroundColor(bgColor());
+        page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        com.google.android.material.bottomnavigation.BottomNavigationView nav=new com.google.android.material.bottomnavigation.BottomNavigationView(new android.view.ContextThemeWrapper(this,isDark()?R.style.Theme_Academy_Dark:R.style.Theme_Academy));
+        nav.setBackgroundColor(surfaceColor());nav.setLabelVisibilityMode(com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
+        nav.getMenu().add(0,1,0,"Accueil").setIcon(android.R.drawable.ic_menu_view);
+        nav.getMenu().add(0,2,1,"Chapitres").setIcon(android.R.drawable.ic_menu_agenda);
+        nav.getMenu().add(0,3,2,"Terminal").setIcon(android.R.drawable.ic_menu_edit);
+        nav.getMenu().add(0,4,3,"Progrès").setIcon(android.R.drawable.ic_menu_info_details);
+        nav.setSelectedItemId(selected);nav.setOnItemSelectedListener(item->{if(item.getItemId()==1)showHome();else if(item.getItemId()==2)showCategoryPicker();else if(item.getItemId()==3){startActivity(new Intent(this,SimulatorActivity.class));return false;}else showStats();return true;});
+        page.addView(nav,new LinearLayout.LayoutParams(-1,-2));protectFromSystemBars(page);setContentView(page);
     }
 
     private boolean isLevelUnlocked(int level) {
@@ -451,6 +354,7 @@ public class MainActivity extends Activity {
     }
 
     private void startLevel(int level) {
+        activeChapter=null;
         reviewMode = false;
         customMode = false;
         examMode = false;
@@ -470,6 +374,7 @@ public class MainActivity extends Activity {
     }
 
     private void startReviewErrors() {
+        activeChapter=null;
         Set<String> wrong = new HashSet<>(prefs.getStringSet("wrongQuestions", Collections.emptySet()));
         quiz = new ArrayList<>();
         for (Question q : questions) {
@@ -492,6 +397,8 @@ public class MainActivity extends Activity {
         showQuizScreen();
     }
 
+    @Override protected void onPause(){if(feedback!=null)feedback.release();super.onPause();}
+
     private void showQuizScreen() {
         applySystemBars();
 
@@ -511,7 +418,7 @@ public class MainActivity extends Activity {
         root.addView(mode);
 
         String screenTitle = reviewMode ? "Renforce tes points faibles" :
-                (customMode ? "Session personnalisée" : levels.get(activeLevel - 1).title);
+                (activeChapter!=null ? AcademyChapters.find(activeChapter).title : customMode ? "Session personnalisée" : levels.get(activeLevel - 1).title);
         addTitle(root, screenTitle, 25);
 
         pointsView = text("", 14, true);
@@ -534,7 +441,7 @@ public class MainActivity extends Activity {
 
         illustrationView = new IllustrationView(this, isDark());
         LinearLayout.LayoutParams illustrationParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(145)
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(88)
         );
         illustrationParams.topMargin = dp(14);
         root.addView(illustrationView, illustrationParams);
@@ -556,6 +463,10 @@ public class MainActivity extends Activity {
         writtenAnswer.setTextColor(textColor());
         writtenAnswer.setHint("Tape ta réponse ici");
         writtenAnswer.setSingleLine(true);
+        writtenAnswer.setMinHeight(dp(56));
+        writtenAnswer.setHintTextColor(secondaryTextColor());
+        writtenAnswer.setPadding(dp(16),dp(12),dp(16),dp(12));
+        writtenAnswer.setBackground(roundedDrawable(surfaceColor(),16,borderColor()));
         writtenAnswer.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         writtenAnswer.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         root.addView(writtenAnswer);
@@ -635,6 +546,7 @@ public class MainActivity extends Activity {
         answered=true;
         Question q=quiz.get(currentIndex);
         writtenAnswer.setEnabled(false);submitWritten.setEnabled(false);
+        if(isCorrect&&!examMode&&feedback!=null)feedback.success();
         recordDailyAnswer();
         recordCategoryResult(q.category, isCorrect);
         if (selectedButton >= 0 && selectedButton < optionButtons.size()) {
@@ -819,6 +731,7 @@ public class MainActivity extends Activity {
     private void finishLevel() {
         int percent = quiz.isEmpty() ? 0 : correctCount * 100 / quiz.size();
         boolean newBest = false;
+        if(activeChapter!=null){int previous=prefs.getInt("chapter_best_"+activeChapter,0);prefs.edit().putInt("chapter_best_"+activeChapter,Math.max(previous,percent)).apply();}
 
         if (!reviewMode && !customMode) {
             int previousBest = prefs.getInt("best_level_" + activeLevel, 0);
@@ -873,6 +786,7 @@ public class MainActivity extends Activity {
         replay.setOnClickListener(v -> {
             if (reviewMode) startReviewErrors();
             else if (customMode && examMode) startExam();
+            else if (activeChapter != null) startCategoryQuiz(activeChapter);
             else if (customMode && "ENTRAÎNEMENT ADAPTATIF".equals(customModeTitle)) startAdaptiveQuiz();
             else if (customMode) startQuickQuiz();
             else startLevel(activeLevel);
@@ -893,6 +807,7 @@ public class MainActivity extends Activity {
     }
 
     private void startQuickQuiz() {
+        activeChapter=null;
         List<Question> pool = new ArrayList<>(questions);
         mixExercises(pool);
         quiz = new ArrayList<>(pool.subList(0, Math.min(10, pool.size())));
@@ -909,6 +824,7 @@ public class MainActivity extends Activity {
     }
 
     private void startExam() {
+        activeChapter=null;
         examCorrections.clear();
         List<Question> pool = new ArrayList<>();
         for (int level = 1; level <= 5; level++) {
@@ -932,6 +848,7 @@ public class MainActivity extends Activity {
     }
 
     private void startAdaptiveQuiz() {
+        activeChapter=null;
         Set<String> wrong = prefs.getStringSet("wrongQuestions", Collections.emptySet());
         List<Question> pool = new ArrayList<>();
         for (Question q : questions) if (wrong.contains(q.text)) pool.add(q);
@@ -962,34 +879,35 @@ public class MainActivity extends Activity {
 
     private void showCategoryPicker() {
         applySystemBars();
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(bgColor());
-        LinearLayout root = column(18, 18, 18, 28);
-        scroll.addView(root);
-        addTitle(root, "Révision ciblée", 28);
-        addBody(root, "Choisis un thème. Les questions restent basées sur tes supports de cours.", 15);
-
-        String[] cats = {"Bash","Git","Branches","SSH","Synchronisation","Conflits","Utilisateurs","Permissions","ACL et droits spéciaux","VirtualBox","Windows"};
-        for (String cat : cats) {
-            Button b = secondaryFullButton(cat);
-            b.setOnClickListener(v -> startCategoryQuiz(((Button) v).getText().toString()));
-            root.addView(b);
+        ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(bgColor());LinearLayout root=column(20,20,20,24);scroll.addView(root);
+        TextView overline=text("LE PARCOURS",11,true);overline.setLetterSpacing(.15f);overline.setTextColor(accentColor());root.addView(overline);
+        addTitle(root,"Choisis ton chapitre",28);
+        addBody(root,"Un sujet à la fois. Un quiz entièrement consacré à ce que tu viens d’apprendre.",15);
+        int number=0;
+        for(AcademyChapters.Chapter chapter:AcademyChapters.ALL){
+            final int index=++number;int count=AcademyChapters.questions(questions,chapter.category).size();
+            LinearLayout box=column(18,18,18,16);box.setBackground(roundedDrawable(surfaceColor(),24,borderColor()));
+            LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);
+            TextView icon=text(chapter.symbol,18,true);icon.setGravity(Gravity.CENTER);icon.setTextColor(accentColor());icon.setBackground(roundedDrawable(accentSurfaceColor(),16,0));heading.addView(icon,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            LinearLayout labels=column(12,0,0,0);labels.setBackgroundColor(Color.TRANSPARENT);TextView label=text("CHAPITRE "+String.format(Locale.ROOT,"%02d",index),11,true);label.setTextColor(secondaryTextColor());labels.addView(label);labels.addView(text(chapter.title,18,true));heading.addView(labels,new LinearLayout.LayoutParams(0,-2,1));box.addView(heading);
+            TextView description=text(chapter.description,14,false);description.setTextColor(secondaryTextColor());description.setPadding(0,dp(14),0,dp(8));box.addView(description);
+            int best=prefs.getInt("chapter_best_"+chapter.category,0);TextView stats=text(count+" questions   ·   "+(best>0?"Meilleur score "+best+" %":"À découvrir"),12,false);stats.setTextColor(secondaryTextColor());box.addView(stats);
+            if(best>0){ProgressBarView bar=new ProgressBarView(this,isDark());bar.setProgress(best);LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,dp(6));bp.topMargin=dp(10);box.addView(bar,bp);}
+            Button start=actionButton("Quiz du chapitre  →");start.setEnabled(count>0);start.setOnClickListener(v->startCategoryQuiz(chapter.category));box.addView(start,spaced(14));root.addView(box,spaced(12));
         }
-        Button back = secondaryFullButton("← Accueil");
-        back.setOnClickListener(v -> showHome());
-        root.addView(back, spaced(10));
-        protectFromSystemBars(scroll);
-        setContentView(scroll);
+        installAcademyPage(scroll,2);
     }
 
     private void startCategoryQuiz(String category) {
-        quiz = new ArrayList<>();
-        for (Question q : questions) if (category.equals(q.category)) quiz.add(q);
+        activeChapter=category;
+        prefs.edit().putString("lastChapter",category).apply();
+        quiz = AcademyChapters.questions(questions,category);
+        if(quiz.isEmpty()){showCategoryPicker();return;}
         mixExercises(quiz);
         reviewMode = false;
         customMode = true;
         examMode = false;
-        customModeTitle = "THÈME : " + category.toUpperCase(Locale.ROOT);
+        customModeTitle = "CHAPITRE · " + category;
         activeLevel = 0;
         currentIndex = 0;
         correctCount = 0;
@@ -1461,7 +1379,8 @@ public class MainActivity extends Activity {
         t.setText(value);
         t.setTextSize(size);
         t.setTextColor(textColor());
-        if (bold) t.setTypeface(t.getTypeface(), Typeface.BOLD);
+        t.setTypeface(Typeface.create(bold?"sans-serif-medium":"sans-serif",Typeface.NORMAL));
+        t.setLineSpacing(dp(2),1.05f);
         return t;
     }
 
@@ -1494,12 +1413,12 @@ public class MainActivity extends Activity {
     }
 
     private Button actionButton(String label) {
-        Button b = new Button(this);
+        Button b = AcademyDesign.button(this);
         b.setText(label);
         b.setTextSize(15f);
         b.setAllCaps(false);
-        b.setTextColor(Color.WHITE);
-        b.setBackground(roundedDrawable(accentColor(), 18, 0));
+        b.setTextColor(isDark() ? Color.rgb(31,24,70) : Color.WHITE);
+        AcademyDesign.style(b, accentColor(), 18, 0);
         b.setPadding(dp(14), dp(11), dp(14), dp(11));
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1511,12 +1430,12 @@ public class MainActivity extends Activity {
     }
 
     private Button secondaryFullButton(String label) {
-        Button b = new Button(this);
+        Button b = AcademyDesign.button(this);
         b.setText(label);
         b.setTextSize(14f);
         b.setAllCaps(false);
         b.setTextColor(textColor());
-        b.setBackground(roundedDrawable(surfaceColor(), 18, borderColor()));
+        AcademyDesign.style(b, surfaceColor(), 18, borderColor());
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1527,14 +1446,14 @@ public class MainActivity extends Activity {
     }
 
     private Button secondaryButton(String label) {
-        Button b = new Button(this);
+        Button b = AcademyDesign.button(this);
         b.setText(label);
         b.setTextSize(12f);
         b.setAllCaps(false);
         b.setTextColor(textColor());
-        b.setBackground(roundedDrawable(surfaceColor(), 16, borderColor()));
-        b.setMinHeight(0);
-        b.setMinimumHeight(0);
+        AcademyDesign.style(b, surfaceColor(), 16, borderColor());
+        b.setMinHeight(dp(48));
+        b.setMinimumHeight(dp(48));
         b.setPadding(dp(12), dp(8), dp(12), dp(8));
         return b;
     }
@@ -1544,7 +1463,7 @@ public class MainActivity extends Activity {
     }
 
     private Button answerButton(String label) {
-        Button b = new Button(this);
+        Button b = AcademyDesign.button(this);
         b.setText(label);
         b.setTextSize(15f);
         b.setAllCaps(false);
@@ -1562,22 +1481,22 @@ public class MainActivity extends Activity {
 
     private void styleAnswerNeutral(Button b) {
         b.setTextColor(textColor());
-        b.setBackground(roundedDrawable(surfaceColor(), 18, borderColor()));
+        AcademyDesign.style(b, surfaceColor(), 18, borderColor());
     }
 
     private void styleAnswerCorrect(Button b) {
         b.setTextColor(Color.WHITE);
-        b.setBackground(roundedDrawable(successColor(), 18, 0));
+        AcademyDesign.style(b, successColor(), 18, 0);
     }
 
     private void styleAnswerWrong(Button b) {
         b.setTextColor(Color.WHITE);
-        b.setBackground(roundedDrawable(errorColor(), 18, 0));
+        AcademyDesign.style(b, errorColor(), 18, 0);
     }
 
     private void styleAnswerMuted(Button b) {
         b.setTextColor(secondaryTextColor());
-        b.setBackground(roundedDrawable(isDark() ? Color.rgb(35,38,44) : Color.rgb(238,240,243), 18, 0));
+        AcademyDesign.style(b, isDark() ? Color.rgb(35,38,44) : Color.rgb(238,240,243), 18, 0);
     }
 
     private void addBottomNav(LinearLayout root, String active) {
@@ -1591,7 +1510,7 @@ public class MainActivity extends Activity {
             Button b = secondaryButton(label);
             if (label.equals(active)) {
                 b.setTextColor(Color.WHITE);
-                b.setBackground(roundedDrawable(accentColor(), 16, 0));
+                AcademyDesign.style(b, accentColor(), 16, 0);
             }
             b.setOnClickListener(v -> {
                 String t = ((Button) v).getText().toString();
@@ -1623,35 +1542,35 @@ public class MainActivity extends Activity {
     }
 
     private int bgColor() {
-        return isDark() ? Color.rgb(17, 19, 24) : Color.rgb(248, 249, 251);
+        return isDark() ? Color.rgb(16, 22, 36) : Color.rgb(246, 246, 242);
     }
 
     private int surfaceColor() {
-        return isDark() ? Color.rgb(28, 31, 37) : Color.WHITE;
+        return isDark() ? Color.rgb(28, 35, 51) : Color.WHITE;
     }
 
     private int accentSurfaceColor() {
-        return isDark() ? Color.rgb(50, 34, 45) : Color.rgb(255, 239, 232);
+        return isDark() ? Color.rgb(45, 42, 81) : Color.rgb(235, 232, 255);
     }
 
     private int textColor() {
-        return isDark() ? Color.rgb(244, 245, 247) : Color.rgb(28, 31, 36);
+        return isDark() ? Color.rgb(242, 244, 252) : Color.rgb(29, 35, 52);
     }
 
     private int secondaryTextColor() {
-        return isDark() ? Color.rgb(186, 190, 198) : Color.rgb(88, 94, 104);
+        return isDark() ? Color.rgb(184, 193, 212) : Color.rgb(86, 98, 118);
     }
 
     private int borderColor() {
-        return isDark() ? Color.rgb(52, 56, 64) : Color.rgb(224, 227, 232);
+        return isDark() ? Color.rgb(55, 64, 83) : Color.rgb(222, 226, 232);
     }
 
     private int accentColor() {
-        return Color.rgb(226, 83, 45);
+        return isDark() ? Color.rgb(174, 163, 255) : AcademyDesign.INDIGO;
     }
 
     private int successColor() {
-        return Color.rgb(50, 145, 86);
+        return Color.rgb(19, 113, 81);
     }
 
     private int errorColor() {
@@ -1734,7 +1653,7 @@ public class MainActivity extends Activity {
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(dark ? Color.rgb(56, 60, 68) : Color.rgb(226, 229, 234));
             canvas.drawRoundRect(new RectF(0, 0, w, h), h / 2f, h / 2f, paint);
-            paint.setColor(Color.rgb(226, 83, 45));
+            paint.setColor(dark ? Color.rgb(169,158,255) : AcademyDesign.INDIGO);
             canvas.drawRoundRect(new RectF(0, 0, w * progress / 100f, h), h / 2f, h / 2f, paint);
         }
     }

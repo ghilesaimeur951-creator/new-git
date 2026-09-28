@@ -63,6 +63,14 @@ jobs:
             audit/scenarios.json
           if-no-files-found: warn
 
+      - name: Upload design previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academy-design-previews
+          path: app/build/reports/design/
+          if-no-files-found: warn
+
       - name: Build debug APK
         run: gradle --stacktrace :app:assembleDebug
 

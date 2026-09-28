@@ -10,9 +10,11 @@ android {
         applicationId = "com.ghiles.quizubuntu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 20
-        versionName = "5.0"
+        versionCode = 21
+        versionName = "5.1"
     }
+
+    testOptions { unitTests.isIncludeAndroidResources = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -36,6 +38,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.android.material:material:1.12.0")
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
     implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.7.1.202607240634-r")
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
