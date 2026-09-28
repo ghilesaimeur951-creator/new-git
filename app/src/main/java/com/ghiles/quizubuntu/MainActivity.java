@@ -272,6 +272,10 @@ public class MainActivity extends Activity {
     private TextView categoryView;
     private TextView progressView;
     private TextView questionView;
+    private TextView primerContextView;
+    private TextView primerCommandView;
+    private TextView primerOutputView;
+    private TextView primerFocusView;
     private TextView feedbackView;
     private TextView detailView;
     private Button moreDetailsButton;
@@ -457,6 +461,22 @@ public class MainActivity extends Activity {
         );
         illustrationParams.topMargin = dp(14);
         root.addView(illustrationView, illustrationParams);
+        illustrationView.setVisibility(View.GONE); // Keep the worked example beside the answer, not before the question.
+
+        primerContextView=card("");
+        primerContextView.setContentDescription("Contexte à lire avant la question");
+        root.addView(primerContextView,spaced(12));
+        primerCommandView=card("");
+        primerCommandView.setTypeface(Typeface.MONOSPACE);
+        primerCommandView.setTextSize(14);
+        root.addView(primerCommandView,spaced(8));
+        primerOutputView=card("");
+        primerOutputView.setTypeface(Typeface.MONOSPACE);
+        primerOutputView.setTextSize(14);
+        root.addView(primerOutputView,spaced(8));
+        primerFocusView=text("",14,true);
+        primerFocusView.setTextColor(accentColor());
+        root.addView(primerFocusView,spaced(8));
 
         questionView = text("", 21, true);
         questionView.setPadding(0, dp(18), 0, dp(14));
@@ -531,7 +551,15 @@ public class MainActivity extends Activity {
         progressView.setText("Question " + (currentIndex + 1) + " / " + quiz.size() +
                 (examMode ? "   •   correction à la fin" : "   •   Bonnes réponses : " + correctCount));
         pointsView.setText("+" + sessionPoints + " pts cette session   •   Série " + streak);
-        questionView.setText(q.text);
+        QuizPrimer primer=QuizPrimer.forQuestion(q);
+        primerContextView.setText("AVANT DE RÉPONDRE\n\n"+primer.context);
+        primerCommandView.setVisibility(primer.command.isEmpty()?View.GONE:View.VISIBLE);
+        if(!primer.command.isEmpty())primerCommandView.setText("À TAPER DANS LE TERMINAL\n"+primer.command);
+        primerOutputView.setVisibility(primer.output.isEmpty()?View.GONE:View.VISIBLE);
+        if(!primer.output.isEmpty())primerOutputView.setText("CE QUI S’AFFICHE (EXEMPLE)\n"+primer.output);
+        primerFocusView.setVisibility(primer.focus.isEmpty()?View.GONE:View.VISIBLE);
+        if(!primer.focus.isEmpty())primerFocusView.setText("À OBSERVER : "+primer.focus);
+        questionView.setText((q.accepted==null?"À TOI DE CHOISIR\n":"À TOI DE TAPER\n")+primer.question);
         illustrationView.setCategory(q.category);
 
         feedbackView.setVisibility(View.GONE);

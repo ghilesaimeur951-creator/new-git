@@ -8,21 +8,26 @@ final class QuizTeaching {
 
     static String simple(MainActivity.Question q, String response, boolean correct) {
         String lead = correct ? "Oui, c’est ça !" : "Pas encore. Tu as répondu « " + response + " ».";
-        String lesson = permissions(q, false);
-        if (lesson.isEmpty()) lesson = plainReason(q);
+        String lesson=reason(q);
         return lead + "\n\nLa réponse attendue est « " + answer(q) + " ».\n\n" + lesson;
     }
 
     static String details(MainActivity.Question q, String response, boolean correct) {
         StringBuilder out = new StringBuilder();
-        out.append("1. Ce que la question te demande\n").append(q.text).append("\n\n");
+        QuizPrimer primer=QuizPrimer.forQuestion(q);
+        out.append("1. Ce que la question te demande\n").append(primer.question).append("\n\n");
         out.append("2. Comment trouver la réponse\n");
-        out.append(concept(q.category)).append("\n");
+        out.append(primer.context).append("\n").append(concept(q.category)).append("\n");
         String specific = permissions(q, true);
         if (!specific.isEmpty()) out.append(specific).append("\n");
         String reason = cleanReason(q.explanation);
-        if (!reason.isEmpty() && !specific.contains(reason)) out.append("Dans le cours : ").append(reason).append("\n");
-        out.append("\n3. Un exemple à lire pas à pas\n").append(q.example).append("\n");
+        if (specific.isEmpty() && pdfLesson(q.text).isEmpty() && !reason.isEmpty())
+            out.append("Pour cette question : ").append(reason).append("\n");
+        out.append("\n3. Un exemple à lire pas à pas\n");
+        if(!primer.command.isEmpty())out.append("Commande tapée :\n").append(primer.command).append("\n");
+        if(!primer.output.isEmpty())out.append("Sortie montrée avant ta réponse :\n").append(primer.output).append("\n");
+        if(!primer.focus.isEmpty())out.append("La partie visée : ").append(primer.focus).append("\n");
+        out.append("Exemple du cours :\n").append(q.example).append("\n");
         out.append(exampleGuide(q)).append("\n");
         if (!correct) {
             out.append("\n4. Pourquoi revoir ta réponse\n");
@@ -44,8 +49,24 @@ final class QuizTeaching {
             }
             out.append(".");
         }
+        if (q.accepted == null && q.options.size() > 1) {
+            out.append("\n\nPourquoi chaque choix convient ou non\n");
+            for (int i=0;i<q.options.size();i++) {
+                String option=q.options.get(i);
+                out.append("• ").append(option).append(" : ");
+                if(i==q.correctIndex)
+                    out.append("c’est le bon choix. ").append(reason(q));
+                else out.append(QuizOptionFeedback.explain(q,option));
+                out.append("\n");
+            }
+        }
         out.append("\n\nL’exemple du quiz sert à apprendre : il n’exécute aucune commande sur ton téléphone.");
         return out.toString();
+    }
+
+    static String reason(MainActivity.Question q) {
+        String specific=permissions(q,false);
+        return specific.isEmpty()?plainReason(q):specific;
     }
 
     private static String plainReason(MainActivity.Question q) {
