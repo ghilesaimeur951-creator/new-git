@@ -57,12 +57,17 @@ public final class RealGitClient {
     private final RealSshKeyStore sshKeyStore;
     private final SharedPreferences prefs;
     private SshdSessionFactory sshSessionFactory;
+    private final RealWorkspace workspace;
 
     public RealGitClient(Context context, SecureTokenStore tokenStore) {
         this.context = context.getApplicationContext();
         this.tokenStore = tokenStore;
         this.sshKeyStore = new RealSshKeyStore(this.context);
         this.prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        try {
+            this.workspace = new RealWorkspace(new File(this.context.getFilesDir(), "github-real"));
+            try { workspace.changeDirectory(prefs.getString("cwd", "~")); } catch (java.io.IOException ignored) { }
+        } catch (java.io.IOException e) { throw new IllegalStateException("Espace Git réel inaccessible", e); }
     }
 
     public void selectRepository(String fullName, String cloneUrl, String defaultBranch) {
@@ -109,16 +114,25 @@ public final class RealGitClient {
         if (!hasLocalRepository()) return;
 
         try (Git git = Git.open(workTree())) {
-            String url = selectedTransportUrl();
-
-            if (!url.isEmpty()) {
-                setOrigin(git.getRepository(), url);
-            }
+            String current = originUrl(git.getRepository());
+            if (!current.isEmpty()) setOrigin(git.getRepository(), isUseSsh() ? toSshUrl(current) : toHttpsUrl(current));
         }
     }
 
+    public synchronized String activeRepositoryUrl() {
+        if (!hasLocalRepository()) return "";
+        try (Git git = Git.open(workTree())) { return originUrl(git.getRepository()); }
+        catch (Exception e) { return ""; }
+    }
+    public String activeRepositoryName() { return inferFullName(activeRepositoryUrl()); }
+    public boolean activeTransportIsSsh() {
+        String url = activeRepositoryUrl();
+        return url.isEmpty() ? isUseSsh() : isSshUrl(url);
+    }
+
     public File workTree() {
-        return new File(context.getFilesDir(), "github-real");
+        File repository = workspace.repositoryDirectory();
+        return repository == null ? workspace.currentDirectory() : repository;
     }
 
     public boolean hasLocalRepository() {
@@ -126,7 +140,7 @@ public final class RealGitClient {
     }
 
     public String displayPath() {
-        return hasLocalRepository() ? "~/github-real" : "~";
+        return workspace.displayPath();
     }
 
     public String currentBranch() {
@@ -183,6 +197,8 @@ public final class RealGitClient {
         configureTransport(clone, url);
 
         try (Git ignored = clone.call()) {
+            workspace.changeDirectory(target.getPath());
+            prefs.edit().putString("cwd", workspace.displayPath()).apply();
             return "Clonage terminé via " +
                 (isSshUrl(url) ? "SSH" : "HTTPS") +
                 " : " +
@@ -234,23 +250,38 @@ public final class RealGitClient {
             return "JGit 6.10.1 (moteur Git Java embarqué)";
         }
 
-        if (!hasLocalRepository()) {
-            if ("git init".equals(command)) {
-                File target = workTree();
-                if (!target.exists() && !target.mkdirs()) {
-                    throw new IllegalStateException("Impossible de créer le dossier Git privé.");
+        for (String key : new String[]{"user.name", "user.email"}) {
+            String prefix = "git config --global " + key + " ";
+            if (command.startsWith(prefix)) {
+                List<String> args = ShellSyntax.words(command);
+                if (args.size() != 5) throw new IllegalArgumentException("Une valeur entre guillemets est attendue.");
+                prefs.edit().putString(key, args.get(4)).apply();
+                if (hasLocalRepository()) try (Git git = Git.open(workTree())) {
+                    git.getRepository().getConfig().setString("user", null, key.substring(5), args.get(4));
+                    git.getRepository().getConfig().save();
                 }
-
-                try (Git ignored = Git.init().setDirectory(target).call()) {
-                    return "Dépôt Git réel initialisé dans l'espace privé de l'application.";
+                return "";
+            }
+        }
+        if ("git init".equals(command)) {
+            File target = workspace.currentDirectory();
+            if (!new File(target, ".git").isDirectory()) {
+                try (Git ignored = Git.init().setDirectory(target).setInitialBranch("main").call()) {
+                    return "Dépôt Git réel initialisé dans " + displayPath() + "/.git";
                 }
             }
-
+            return "Dépôt réel existant : " + displayPath();
+        }
+        if (!hasLocalRepository()) {
             return "fatal: not a git repository — clone ou initialise d'abord un dépôt.";
         }
 
         try (Git git = Git.open(workTree())) {
             Repository repository = git.getRepository();
+            for (String key : new String[]{"name", "email"}) {
+                String value = prefs.getString("user." + key, "");
+                if (!value.isEmpty()) repository.getConfig().setString("user", null, key, value);
+            }
 
             if ("git status".equals(command)) {
                 return status(git.status().call());
@@ -272,13 +303,12 @@ public final class RealGitClient {
 
             if (command.startsWith("git remote add origin ")) {
                 String url = command.substring("git remote add origin ".length()).trim();
+                if (!originUrl(repository).isEmpty()) throw new IllegalStateException("Le remote origin existe déjà. Utilise git remote set-url origin URL.");
+                if (!isGithubUrl(url)) throw new IllegalArgumentException("URL GitHub HTTPS ou SSH requise.");
                 setOrigin(repository, url);
 
-                if (isSshUrl(url)) {
-                    setUseSsh(true);
-                }
-
-                if (selectedRepositoryUrl().isEmpty() && isGithubUrl(url)) {
+                setUseSsh(isSshUrl(url));
+                if (isGithubUrl(url)) {
                     selectRepository(
                         inferFullName(url),
                         toHttpsUrl(url),
@@ -291,12 +321,11 @@ public final class RealGitClient {
 
             if (command.startsWith("git remote set-url origin ")) {
                 String url = command.substring("git remote set-url origin ".length()).trim();
+                if (!isGithubUrl(url)) throw new IllegalArgumentException("URL GitHub requise");
                 setOrigin(repository, url);
 
-                if (isSshUrl(url)) {
-                    setUseSsh(true);
-                }
-
+                if (!isGithubUrl(url)) throw new IllegalArgumentException("URL GitHub requise");
+                setUseSsh(isSshUrl(url));
                 if (isGithubUrl(url)) {
                     selectRepository(
                         inferFullName(url),
@@ -433,15 +462,21 @@ public final class RealGitClient {
             }
 
             if (command.startsWith("git add ")) {
-                String pattern = command.substring("git add ".length()).trim();
-
-                if (".".equals(pattern)) {
-                    git.add().addFilepattern(".").call();
+                List<String> args = ShellSyntax.words(command);
+                if (args.size() < 3) throw new IllegalArgumentException("git add: chemin requis");
+                boolean all=args.contains("-A"), update=args.contains("-u");
+                if (all || update) {
+                    if(all)git.add().addFilepattern(".").call();
                     git.add().addFilepattern(".").setUpdate(true).call();
-                } else {
+                } else for(int i=2;i<args.size();i++) {
+                    if(args.get(i).startsWith("-"))throw new IllegalArgumentException("Option git add non prise en charge");
+                    File target=workspace.resolve(args.get(i),true);
+                    if(!target.toPath().startsWith(workTree().toPath()))throw new IllegalArgumentException("Chemin hors du dépôt courant");
+                    String pattern=workTree().toPath().relativize(target.toPath()).toString().replace(File.separatorChar,'/');
+                    if(pattern.isEmpty())pattern=".";
                     git.add().addFilepattern(pattern).call();
+                    git.add().addFilepattern(pattern).setUpdate(true).call();
                 }
-
                 return "";
             }
 
@@ -507,17 +542,20 @@ public final class RealGitClient {
                 String url = repository.getConfig().getString("remote", remote, "url");
                 if (url == null) return "Remote inconnu : " + remote;
                 configureTransport(pull, url);
+                org.eclipse.jgit.lib.ObjectId before = repository.resolve("HEAD");
                 PullResult result = pull.call();
-                return result.isSuccessful() ? "Pull terminé : " + remote + "/" + branch
-                    : "Pull à terminer : inspecte git status et résous les conflits avant de publier.";
+                if (!result.isSuccessful()) throw new IllegalStateException("Pull non terminé : inspecte git status et résous les conflits. Les fichiers ne sont pas annoncés synchronisés.");
+                return "Pull terminé : " + remote + "/" + branch + "\n" +
+                    RealSyncResults.changedFiles(repository, before, repository.resolve("HEAD")) +
+                    "Dossier : " + displayPath() + "\nUtilise cat fichier ou nano fichier pour voir le contenu récupéré.";
             }
 
             if ("git push".equals(command)) {
                 PushCommand push = git.push();
                 configureTransport(push, originUrl(repository));
-                push.call();
+                String confirmation = RealSyncResults.requireAccepted(push.call());
 
-                return "Push terminé via " +
+                return confirmation + pendingChanges(git) + "Push vérifié via " +
                     transportLabel(originUrl(repository)) +
                     ".";
             }
@@ -530,7 +568,7 @@ public final class RealGitClient {
                     .add(branch);
 
                 configureTransport(push, originUrl(repository));
-                push.call();
+                String confirmation = RealSyncResults.requireAccepted(push.call());
 
                 repository.getConfig().setString(
                     ConfigConstants.CONFIG_BRANCH_SECTION,
@@ -546,7 +584,7 @@ public final class RealGitClient {
                 );
                 repository.getConfig().save();
 
-                return "Push terminé ; upstream configuré pour origin/" + branch + ".";
+                return confirmation + pendingChanges(git) + "Upstream configuré pour origin/" + branch + ".";
             }
 
             if (command.startsWith("git push origin --delete ")) {
@@ -557,9 +595,9 @@ public final class RealGitClient {
                     .setRefSpecs(new RefSpec(":refs/heads/" + branch));
 
                 configureTransport(push, originUrl(repository));
-                push.call();
+                String confirmation = RealSyncResults.requireAccepted(push.call());
 
-                return "Branche distante supprimée : " + branch;
+                return confirmation + "Branche distante supprimée : " + branch;
             }
 
             if (command.startsWith("git push origin ")) {
@@ -570,9 +608,9 @@ public final class RealGitClient {
                     .add(branch);
 
                 configureTransport(push, originUrl(repository));
-                push.call();
+                String confirmation = RealSyncResults.requireAccepted(push.call());
 
-                return "Push terminé vers origin/" + branch +
+                return confirmation + pendingChanges(git) + "Push vérifié vers origin/" + branch +
                     " via " +
                     transportLabel(originUrl(repository)) +
                     ".";
@@ -633,38 +671,20 @@ public final class RealGitClient {
         }
     }
 
+    public synchronized String editorPath(String path) throws Exception { return workspace.resolve(path, true).getPath(); }
+    public synchronized String readEditorFile(String path) throws Exception {
+        File file = workspace.resolve(path, true);
+        return file.exists() ? workspace.read(path) : "";
+    }
+    public synchronized void saveEditorFile(String path, String content) throws Exception { workspace.write(path, content, false); }
+
     private String executeFileCommand(String command) throws Exception {
-        File root = workTree();
-
-        if ("pwd".equals(command)) {
-            return displayPath();
-        }
-
-        if ("ls".equals(command) || "ls -la".equals(command) || "ls -l".equals(command)) {
-            if (!root.exists()) return "";
-
-            File[] files = root.listFiles();
-            if (files == null) return "";
-
-            StringBuilder out = new StringBuilder();
-
-            for (File file : files) {
-                if (!command.contains("-a") && file.getName().startsWith(".")) continue;
-
-                if (command.contains("-l")) {
-                    out.append(file.isDirectory() ? "drwxr-xr-x  " : "-rw-r--r--  ");
-                }
-
-                out.append(file.getName());
-                if (file.isDirectory()) out.append("/");
-                out.append('\n');
-            }
-
-            return out.toString().trim();
-        }
-
-        return "En mode GitHub réel, les commandes shell arbitraires restent désactivées. " +
-            "Utilise les commandes Git prises en charge ou repasse en SIMULATION.";
+        String result = workspace.execute(command);
+        prefs.edit().putString("cwd", workspace.displayPath()).apply();
+        return result;
+    }
+    private String pendingChanges(Git git) throws Exception {
+        return git.status().call().isClean() ? "" : "Des modifications locales ne sont pas dans un commit : elles n'ont pas été envoyées. Fais git status, git add, puis git commit avant le prochain push.\n";
     }
 
     private void configureTransport(
@@ -1222,7 +1242,7 @@ public final class RealGitClient {
     private void deleteRecursively(File file) {
         if (file == null || !file.exists()) return;
 
-        if (file.isDirectory()) {
+        if (file.isDirectory() && !java.nio.file.Files.isSymbolicLink(file.toPath())) {
             File[] children = file.listFiles();
 
             if (children != null) {

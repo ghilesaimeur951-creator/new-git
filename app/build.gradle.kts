@@ -10,8 +10,8 @@ android {
         applicationId = "com.ghiles.quizubuntu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 16
-        versionName = "4.6.1"
+        versionCode = 17
+        versionName = "4.7"
     }
 
     compileOptions {
@@ -48,5 +48,6 @@ tasks.withType<Test>().configureEach {
     testLogging {
         events("failed", "standardOut", "standardError")
         showStandardStreams = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
